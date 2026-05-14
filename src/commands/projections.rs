@@ -12,8 +12,9 @@ use crate::envelope::Meta;
 use crate::gitops;
 use crate::state::{AppContext, PendingOpsReport, resolve_agent_skill_source_dirs};
 use crate::state_model::{
-    RegistryBindingRule, RegistryOperationRecord, RegistryProjectionInstance,
-    RegistryProjectionsFile, RegistryRulesFile, RegistrySnapshot, RegistryStatePaths,
+    RegistryBindingRule, RegistryObservationEvent, RegistryOperationRecord,
+    RegistryProjectionInstance, RegistryProjectionsFile, RegistryRulesFile, RegistrySnapshot,
+    RegistryStatePaths,
 };
 use crate::types::{ErrorCode, SyncState};
 
@@ -278,6 +279,125 @@ pub(crate) fn record_registry_operation(
     }
 
     Ok(op_id)
+}
+
+pub(crate) fn record_registry_observation(
+    paths: &RegistryStatePaths,
+    instance_id: &str,
+    kind: &str,
+    path: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<String> {
+    let event_id = Uuid::new_v4().to_string();
+    let event = RegistryObservationEvent {
+        event_id: event_id.clone(),
+        instance_id: instance_id.to_string(),
+        kind: kind.to_string(),
+        path,
+        from,
+        to,
+        observed_at: Utc::now(),
+    };
+    paths.append_observation(&event)?;
+    Ok(event_id)
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RegistryAuditStateBackup {
+    operations: Vec<u8>,
+    checkpoint: Vec<u8>,
+    observations: Vec<(String, Vec<u8>)>,
+}
+
+pub(crate) fn snapshot_registry_audit_state(
+    paths: &RegistryStatePaths,
+) -> Result<RegistryAuditStateBackup> {
+    let mut observations = Vec::new();
+    if paths.observations_dir.exists() {
+        for entry in fs::read_dir(&paths.observations_dir).with_context(|| {
+            format!(
+                "failed to read observations dir {}",
+                paths.observations_dir.display()
+            )
+        })? {
+            let entry = entry.with_context(|| {
+                format!(
+                    "failed to read observations entry under {}",
+                    paths.observations_dir.display()
+                )
+            })?;
+            let file_type = entry.file_type().with_context(|| {
+                format!(
+                    "failed to inspect observation entry {}",
+                    entry.path().display()
+                )
+            })?;
+            if !file_type.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let contents = fs::read(entry.path()).with_context(|| {
+                format!("failed to snapshot observation {}", entry.path().display())
+            })?;
+            observations.push((name, contents));
+        }
+    }
+
+    Ok(RegistryAuditStateBackup {
+        operations: fs::read(&paths.operations_file)
+            .with_context(|| format!("failed to snapshot {}", paths.operations_file.display()))?,
+        checkpoint: fs::read(&paths.checkpoint_file)
+            .with_context(|| format!("failed to snapshot {}", paths.checkpoint_file.display()))?,
+        observations,
+    })
+}
+
+pub(crate) fn restore_registry_audit_state(
+    paths: &RegistryStatePaths,
+    backup: &RegistryAuditStateBackup,
+) -> Result<()> {
+    fs::write(&paths.operations_file, &backup.operations)
+        .with_context(|| format!("failed to restore {}", paths.operations_file.display()))?;
+    fs::write(&paths.checkpoint_file, &backup.checkpoint)
+        .with_context(|| format!("failed to restore {}", paths.checkpoint_file.display()))?;
+
+    fs::create_dir_all(&paths.observations_dir).with_context(|| {
+        format!(
+            "failed to create observations dir {}",
+            paths.observations_dir.display()
+        )
+    })?;
+    for entry in fs::read_dir(&paths.observations_dir).with_context(|| {
+        format!(
+            "failed to read observations dir {}",
+            paths.observations_dir.display()
+        )
+    })? {
+        let entry = entry.with_context(|| {
+            format!(
+                "failed to read observations entry under {}",
+                paths.observations_dir.display()
+            )
+        })?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("failed to inspect observation entry {}", path.display()))?;
+        if file_type.is_dir() {
+            fs::remove_dir_all(&path)
+                .with_context(|| format!("failed to remove observation dir {}", path.display()))?;
+        } else {
+            fs::remove_file(&path)
+                .with_context(|| format!("failed to remove observation file {}", path.display()))?;
+        }
+    }
+    for (name, contents) in &backup.observations {
+        let path = paths.observations_dir.join(name);
+        fs::write(&path, contents)
+            .with_context(|| format!("failed to restore observation {}", path.display()))?;
+    }
+    Ok(())
 }
 
 fn maybe_projection_fault(tag: &str) -> Result<()> {

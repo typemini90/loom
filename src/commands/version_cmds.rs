@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Path;
 
 use serde_json::json;
@@ -9,7 +10,9 @@ use crate::state_model::RegistryStatePaths;
 use crate::types::ErrorCode;
 
 use super::helpers::{
-    ensure_skill_exists, map_arg, map_git, map_lock, maybe_autosync_or_queue, validate_skill_name,
+    backup_path_if_exists, commit_registry_state, ensure_skill_exists, map_arg, map_git, map_lock,
+    map_registry_state, maybe_autosync_or_queue, record_registry_observation,
+    record_registry_operation, restore_path_from_backup, validate_skill_name,
 };
 use super::{App, CommandFailure};
 
@@ -25,25 +28,89 @@ impl App {
         ensure_skill_exists(&self.ctx, &args.skill)?;
         let _lock = self.ctx.lock_skill(&args.skill).map_err(map_lock)?;
 
+        let previous_head = gitops::head(&self.ctx).map_err(map_git)?;
+        let previous_index = gitops::snapshot_index(&self.ctx).map_err(map_git)?;
         let tag = format!("release/{}/{}", args.skill, args.version);
-        gitops::create_annotated_tag(
+        let paths = RegistryStatePaths::from_app_context(&self.ctx);
+        let registry_layout_backup =
+            backup_registry_layout(&self.ctx, &paths).map_err(map_registry_state)?;
+        if let Err(err) = paths.ensure_layout() {
+            restore_registry_layout_best_effort(&paths, &registry_layout_backup);
+            remove_registry_layout_backups_best_effort(&registry_layout_backup);
+            let _ = gitops::restore_index(&self.ctx, &previous_index);
+            return Err(map_registry_state(err));
+        }
+
+        if let Err(err) = gitops::create_annotated_tag(
             &self.ctx,
             &tag,
             &format!("release {} {}", args.skill, args.version),
-        )
-        .map_err(map_git)?;
+        ) {
+            restore_registry_layout_best_effort(&paths, &registry_layout_backup);
+            remove_registry_layout_backups_best_effort(&registry_layout_backup);
+            let _ = gitops::restore_index(&self.ctx, &previous_index);
+            return Err(map_git(err));
+        }
 
-        let mut meta = Meta::default();
-        maybe_autosync_or_queue(
-            &self.ctx,
-            "release",
-            request_id,
-            json!({"skill": args.skill, "tag": tag}),
-            &mut meta,
-        )?;
+        let post_audit: std::result::Result<(Option<String>, Meta), CommandFailure> = (|| {
+            let op_id = record_registry_operation(
+                &paths,
+                "skill.release",
+                json!({
+                    "skill": args.skill,
+                    "version": args.version,
+                    "tag": tag,
+                    "request_id": request_id
+                }),
+                json!({
+                    "tag": tag
+                }),
+            )
+            .map_err(map_registry_state)?;
+            record_skill_projection_observations(
+                &paths,
+                &args.skill,
+                "released",
+                None,
+                None,
+                Some(tag.clone()),
+            )
+            .map_err(map_registry_state)?;
+            let state_commit = commit_registry_state(
+                &self.ctx,
+                &format!("release({}): record registry operation", args.skill),
+            )?;
+            maybe_version_fault("skill_release_after_state_commit")?;
+            let mut meta = Meta {
+                op_id: Some(op_id),
+                ..Meta::default()
+            };
+            maybe_autosync_or_queue(
+                &self.ctx,
+                "release",
+                request_id,
+                json!({"skill": args.skill, "tag": tag, "state_commit": state_commit}),
+                &mut meta,
+            )?;
+            Ok((state_commit, meta))
+        })();
+        let (state_commit, meta) = match post_audit {
+            Ok(result) => {
+                remove_registry_layout_backups_best_effort(&registry_layout_backup);
+                result
+            }
+            Err(err) => {
+                reset_command_created_commit_best_effort(self, &previous_head);
+                restore_registry_layout_best_effort(&paths, &registry_layout_backup);
+                remove_registry_layout_backups_best_effort(&registry_layout_backup);
+                let _ = gitops::restore_index(&self.ctx, &previous_index);
+                delete_tag_best_effort(self, &tag);
+                return Err(err);
+            }
+        };
 
         Ok((
-            json!({"skill": args.skill, "version": args.version, "tag": tag}),
+            json!({"skill": args.skill, "version": args.version, "tag": tag, "state_commit": state_commit}),
             meta,
         ))
     }
@@ -71,35 +138,136 @@ impl App {
         };
 
         let _lock = self.ctx.lock_skill(&args.skill).map_err(map_lock)?;
+        let previous_head = gitops::head(&self.ctx).map_err(map_git)?;
+        let previous_index = gitops::snapshot_index(&self.ctx).map_err(map_git)?;
         gitops::resolve_ref(&self.ctx, &reference).map_err(map_git)?;
 
         let skill_rel = format!("skills/{}", args.skill);
-        gitops::checkout_path_from_ref(&self.ctx, &reference, Path::new(&skill_rel))
-            .map_err(map_git)?;
-        gitops::stage_path(&self.ctx, Path::new(&skill_rel)).map_err(map_git)?;
+        let skill_path = self.ctx.root.join(&skill_rel);
+        let skill_backup = backup_path_if_exists(&self.ctx, &skill_path, "skill-rollback")
+            .map_err(map_registry_state)?;
+        if let Err(err) =
+            gitops::checkout_path_from_ref(&self.ctx, &reference, Path::new(&skill_rel))
+        {
+            restore_path_best_effort(&skill_path, skill_backup.as_ref());
+            remove_backup_path_best_effort(skill_backup.as_ref());
+            let _ = gitops::restore_index(&self.ctx, &previous_index);
+            return Err(map_git(err));
+        }
+        if let Err(err) = gitops::stage_path(&self.ctx, Path::new(&skill_rel)) {
+            restore_path_best_effort(&skill_path, skill_backup.as_ref());
+            remove_backup_path_best_effort(skill_backup.as_ref());
+            let _ = gitops::restore_index(&self.ctx, &previous_index);
+            return Err(map_git(err));
+        }
 
-        let changed = gitops::has_staged_changes_for_path(&self.ctx, Path::new(&skill_rel))
-            .map_err(map_git)?;
+        let changed = match gitops::has_staged_changes_for_path(&self.ctx, Path::new(&skill_rel)) {
+            Ok(changed) => changed,
+            Err(err) => {
+                restore_path_best_effort(&skill_path, skill_backup.as_ref());
+                remove_backup_path_best_effort(skill_backup.as_ref());
+                let _ = gitops::restore_index(&self.ctx, &previous_index);
+                return Err(map_git(err));
+            }
+        };
         if !changed {
+            remove_backup_path_best_effort(skill_backup.as_ref());
+            let _ = gitops::restore_index(&self.ctx, &previous_index);
             return Ok((
                 json!({"skill": args.skill, "reference": reference, "noop": true}),
                 Meta::default(),
             ));
         }
 
-        let message = format!("rollback({}): restore from {}", args.skill, reference);
-        let commit = gitops::commit(&self.ctx, &message).map_err(map_git)?;
-
-        let mut meta = Meta::default();
-        maybe_autosync_or_queue(
-            &self.ctx,
-            "rollback",
-            request_id,
-            json!({"skill": args.skill, "commit": commit, "reference": reference}),
-            &mut meta,
-        )?;
-
         let paths = RegistryStatePaths::from_app_context(&self.ctx);
+        let registry_layout_backup =
+            backup_registry_layout(&self.ctx, &paths).map_err(map_registry_state)?;
+        if let Err(err) = paths.ensure_layout() {
+            restore_path_best_effort(&skill_path, skill_backup.as_ref());
+            remove_backup_path_best_effort(skill_backup.as_ref());
+            restore_registry_layout_best_effort(&paths, &registry_layout_backup);
+            remove_registry_layout_backups_best_effort(&registry_layout_backup);
+            let _ = gitops::restore_index(&self.ctx, &previous_index);
+            return Err(map_registry_state(err));
+        }
+
+        let message = format!("rollback({}): restore from {}", args.skill, reference);
+        let commit = match gitops::commit(&self.ctx, &message) {
+            Ok(commit) => commit,
+            Err(err) => {
+                restore_path_best_effort(&skill_path, skill_backup.as_ref());
+                remove_backup_path_best_effort(skill_backup.as_ref());
+                restore_registry_layout_best_effort(&paths, &registry_layout_backup);
+                remove_registry_layout_backups_best_effort(&registry_layout_backup);
+                let _ = gitops::restore_index(&self.ctx, &previous_index);
+                return Err(map_git(err));
+            }
+        };
+
+        let post_audit: std::result::Result<(Option<String>, Meta), CommandFailure> = (|| {
+            let op_id = record_registry_operation(
+                &paths,
+                "skill.rollback",
+                json!({
+                    "skill": args.skill,
+                    "reference": reference,
+                    "request_id": request_id
+                }),
+                json!({
+                    "commit": commit,
+                    "noop": false
+                }),
+            )
+            .map_err(map_registry_state)?;
+            record_skill_projection_observations(
+                &paths,
+                &args.skill,
+                "rollback",
+                Some(skill_rel.clone()),
+                Some(previous_head.clone()),
+                Some(reference.clone()),
+            )
+            .map_err(map_registry_state)?;
+            let state_commit = commit_registry_state(
+                &self.ctx,
+                &format!("rollback({}): record registry operation", args.skill),
+            )?;
+            maybe_version_fault("skill_rollback_after_state_commit")?;
+            let mut meta = Meta {
+                op_id: Some(op_id),
+                ..Meta::default()
+            };
+            maybe_autosync_or_queue(
+                &self.ctx,
+                "rollback",
+                request_id,
+                json!({
+                    "skill": args.skill,
+                    "commit": commit,
+                    "reference": reference,
+                    "state_commit": state_commit
+                }),
+                &mut meta,
+            )?;
+            Ok((state_commit, meta))
+        })();
+        let (state_commit, mut meta) = match post_audit {
+            Ok(result) => {
+                remove_backup_path_best_effort(skill_backup.as_ref());
+                remove_registry_layout_backups_best_effort(&registry_layout_backup);
+                result
+            }
+            Err(err) => {
+                reset_command_created_commit_best_effort(self, &previous_head);
+                restore_path_best_effort(&skill_path, skill_backup.as_ref());
+                remove_backup_path_best_effort(skill_backup.as_ref());
+                restore_registry_layout_best_effort(&paths, &registry_layout_backup);
+                remove_registry_layout_backups_best_effort(&registry_layout_backup);
+                let _ = gitops::restore_index(&self.ctx, &previous_index);
+                return Err(err);
+            }
+        };
+
         if let Ok(Some(snapshot)) = paths.maybe_load_snapshot() {
             let stale: Vec<_> = snapshot
                 .projections
@@ -117,7 +285,13 @@ impl App {
         }
 
         Ok((
-            json!({"skill": args.skill, "reference": reference, "commit": commit, "noop": false}),
+            json!({
+                "skill": args.skill,
+                "reference": reference,
+                "commit": commit,
+                "state_commit": state_commit,
+                "noop": false
+            }),
             meta,
         ))
     }
@@ -136,4 +310,111 @@ impl App {
             Meta::default(),
         ))
     }
+}
+
+fn delete_tag_best_effort(app: &App, tag: &str) {
+    let _ = gitops::run_git_allow_failure(&app.ctx, &["tag", "-d", tag]);
+}
+
+fn reset_command_created_commit_best_effort(app: &App, previous_head: &str) {
+    let _ = gitops::run_git_allow_failure(&app.ctx, &["reset", "--soft", previous_head]);
+}
+
+fn restore_path_best_effort(path: &Path, backup: Option<&serde_json::Value>) {
+    if let Some(backup) = backup {
+        let _ = restore_path_from_backup(path, backup);
+    } else {
+        let _ = crate::state::remove_path_if_exists(path);
+    }
+}
+
+struct RegistryLayoutBackup {
+    registry: Option<serde_json::Value>,
+    legacy_v3: Option<serde_json::Value>,
+}
+
+fn backup_registry_layout(
+    ctx: &crate::state::AppContext,
+    paths: &RegistryStatePaths,
+) -> anyhow::Result<RegistryLayoutBackup> {
+    Ok(RegistryLayoutBackup {
+        registry: backup_path_if_exists(ctx, &paths.registry_dir, "registry-layout")?,
+        legacy_v3: backup_path_if_exists(
+            ctx,
+            &paths.state_dir.join("v3"),
+            "legacy-registry-layout",
+        )?,
+    })
+}
+
+fn restore_registry_layout_best_effort(paths: &RegistryStatePaths, backup: &RegistryLayoutBackup) {
+    if backup.registry.is_some() {
+        restore_path_best_effort(&paths.registry_dir, backup.registry.as_ref());
+    } else {
+        let _ = crate::state::remove_path_if_exists(&paths.registry_dir);
+    }
+
+    if backup.legacy_v3.is_some() {
+        restore_path_best_effort(&paths.state_dir.join("v3"), backup.legacy_v3.as_ref());
+    }
+}
+
+fn remove_registry_layout_backups_best_effort(backup: &RegistryLayoutBackup) {
+    remove_backup_path_best_effort(backup.registry.as_ref());
+    remove_backup_path_best_effort(backup.legacy_v3.as_ref());
+}
+
+fn remove_backup_path_best_effort(backup: Option<&serde_json::Value>) {
+    let Some(path) = backup
+        .and_then(|backup| backup.get("backup_path"))
+        .and_then(serde_json::Value::as_str)
+        .map(Path::new)
+    else {
+        return;
+    };
+    let _ = crate::state::remove_path_if_exists(path);
+    if let Some(parent) = path.parent() {
+        let _ = fs::remove_dir(parent);
+        if let Some(grandparent) = parent.parent() {
+            let _ = fs::remove_dir(grandparent);
+        }
+    }
+}
+
+fn maybe_version_fault(tag: &str) -> std::result::Result<(), CommandFailure> {
+    if std::env::var("LOOM_FAULT_INJECT").ok().as_deref() == Some(tag) {
+        return Err(CommandFailure::new(
+            ErrorCode::InternalError,
+            format!("fault injected at {}", tag),
+        ));
+    }
+    Ok(())
+}
+
+fn record_skill_projection_observations(
+    paths: &RegistryStatePaths,
+    skill_id: &str,
+    kind: &str,
+    path: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+) -> anyhow::Result<()> {
+    if let Some(snapshot) = paths.maybe_load_snapshot()? {
+        for projection in snapshot
+            .projections
+            .projections
+            .iter()
+            .filter(|projection| projection.skill_id == skill_id)
+        {
+            record_registry_observation(
+                paths,
+                &projection.instance_id,
+                kind,
+                path.clone(),
+                from.clone(),
+                to.clone(),
+            )?;
+        }
+    }
+    Ok(())
 }
