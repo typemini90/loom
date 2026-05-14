@@ -369,7 +369,7 @@ pub struct TargetAddArgs {
     pub path: String,
 
     /// Whether Loom can write to this target.
-    #[arg(long, value_enum, default_value_t = TargetOwnership::Managed)]
+    #[arg(long, value_enum, default_value_t = TargetOwnership::Observed)]
     pub ownership: TargetOwnership,
 }
 

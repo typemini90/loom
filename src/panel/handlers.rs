@@ -323,7 +323,7 @@ pub(super) async fn registry_target_add(
             command: TargetCommand::Add(crate::cli::TargetAddArgs {
                 agent: req.agent,
                 path: req.path,
-                ownership: req.ownership.unwrap_or(TargetOwnership::Managed),
+                ownership: req.ownership.unwrap_or(TargetOwnership::Observed),
             }),
         },
     )

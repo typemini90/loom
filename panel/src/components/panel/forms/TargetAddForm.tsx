@@ -13,7 +13,7 @@ interface TargetAddFormProps {
 export function TargetAddForm({ onCancel, onSuccess }: TargetAddFormProps) {
   const [agent, setAgent] = useState<string>(AGENT_OPTIONS[0].slug);
   const [path, setPath] = useState("");
-  const [ownership, setOwnership] = useState<Ownership>("managed");
+  const [ownership, setOwnership] = useState<Ownership>("observed");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

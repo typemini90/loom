@@ -26,6 +26,11 @@ pub fn target_add(root: &Path, agent: &str, path: &Path, ownership: &str) -> (Ou
     )
 }
 
+pub fn target_add_with_default_ownership(root: &Path, agent: &str, path: &Path) -> (Output, Value) {
+    let path = path.to_string_lossy().into_owned();
+    run_loom(root, &["target", "add", "--agent", agent, "--path", &path])
+}
+
 pub fn binding_add(
     root: &Path,
     agent: &str,
