@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use common::actions::{binding_add, target_add};
+use common::actions::{binding_add, target_add, target_add_with_default_ownership};
 use serde_json::Value;
 
 use common::{TestDir, run_loom, run_loom_with_env, write_minimal_registry_state};
@@ -81,6 +81,39 @@ fn target_add_bootstraps_registry_state_and_records_op() {
         "managed target path should be created"
     );
     assert!(root.path().join("state/registry/schema.json").exists());
+}
+
+#[test]
+fn target_add_defaults_to_observed_ownership() {
+    let root = TestDir::new("registry-target-add-default-observed");
+    let target_path = root.path().join("live/claude-project-a");
+    fs::create_dir_all(&target_path).expect("create observed target path");
+
+    let (output, env) = target_add_with_default_ownership(root.path(), "claude", &target_path);
+
+    assert!(
+        output.status.success(),
+        "loom failed: stderr={} stdout={}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(env["ok"], Value::Bool(true));
+    assert_eq!(
+        env["data"]["target"]["ownership"],
+        Value::String("observed".to_string())
+    );
+    assert_eq!(
+        env["data"]["target"]["capabilities"]["symlink"],
+        Value::Bool(false)
+    );
+    assert_eq!(
+        env["data"]["target"]["capabilities"]["copy"],
+        Value::Bool(false)
+    );
+    assert_eq!(
+        env["data"]["target"]["capabilities"]["watch"],
+        Value::Bool(true)
+    );
 }
 
 #[test]

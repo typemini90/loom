@@ -62,10 +62,13 @@ loom --json --root ~/loom-registry skill add /path/to/my-skill --name my-skill
 ### 5.3 注册 target（支持多目录）
 
 ```bash
-loom --json --root ~/loom-registry target add --agent claude --path "$HOME/.claude/skills" --ownership managed
-loom --json --root ~/loom-registry target add --agent claude --path "$HOME/.claude-work/skills" --ownership managed
-loom --json --root ~/loom-registry target add --agent codex --path "$HOME/.codex/skills" --ownership managed
+mkdir -p "$HOME/.loom-targets/claude/skills" "$HOME/.loom-targets/claude-work/skills" "$HOME/.loom-targets/codex/skills"
+loom --json --root ~/loom-registry target add --agent claude --path "$HOME/.loom-targets/claude/skills" --ownership managed
+loom --json --root ~/loom-registry target add --agent claude --path "$HOME/.loom-targets/claude-work/skills" --ownership managed
+loom --json --root ~/loom-registry target add --agent codex --path "$HOME/.loom-targets/codex/skills" --ownership managed
 ```
+
+已有的 agent skill 目录（例如 `~/.claude/skills`、`~/.codex/skills`）默认应使用 `observed`，不要注册成 `managed`。
 
 ### 5.4 绑定 workspace 到默认 target
 

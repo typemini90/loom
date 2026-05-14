@@ -347,6 +347,8 @@ loom target show <target-id>
 loom target remove <target-id>
 ```
 
+`target add` defaults to `observed` ownership.
+
 ### 11.3 Skill
 
 ```bash

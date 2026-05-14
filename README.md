@@ -254,6 +254,8 @@ loom panel [--port 43117]
 
 Most commands support compact `--json` for machine-readable output; add `--pretty` when you want formatted JSON for inspection. Commands default to `~/.loom-registry`; use `--root <dir>` to override that registry.
 
+`target add` defaults to `--ownership observed`; pass `--ownership managed` only for directories Loom is allowed to write.
+
 </details>
 
 ### Multi-Directory Example (Claude)

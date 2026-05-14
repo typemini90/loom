@@ -287,7 +287,7 @@ Rules:
 loom --json --root <root> target add \
   --agent <agent> \
   --path <dir> \
-  --ownership <managed|observed|external>
+  [--ownership <managed|observed|external>]
 ```
 
 Write command.
@@ -295,7 +295,7 @@ Write command.
 Rules:
 
 1. registration does not project anything
-2. `ownership` must be explicit
+2. `ownership` defaults to `observed`; pass `managed` only for directories Loom may write
 
 ### 10.2 `target list`
 
