@@ -47,6 +47,9 @@ jobs:
             exit 1
           fi
 
+      - name: Panel Typecheck
+        run: make panel-typecheck
+
       - name: Panel Tests
         run: make panel-test
 

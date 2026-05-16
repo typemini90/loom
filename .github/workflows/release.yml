@@ -45,6 +45,9 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Panel typecheck
+        run: make panel-typecheck
+
       - name: Panel build
         run: make panel-build
 
@@ -100,6 +103,29 @@ jobs:
           cp README.md LICENSE "$staging/"
           tar -C dist -czf "dist/$archive" "skillloom-${version}-${{ matrix.target }}"
           (cd dist && shasum -a 256 "$archive" > "$archive.sha256")
+
+      - name: Smoke packaged binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          archive="skillloom-${version}-${{ matrix.target }}.tar.gz"
+          unpack="$(mktemp -d)"
+          tar -C "$unpack" -xzf "dist/$archive"
+          bin="$unpack/skillloom-${version}-${{ matrix.target }}/loom"
+          "$bin" --version
+          "$bin" --help >/dev/null
+          smoke_root="$(mktemp -d)"
+          "$bin" --json --root "$smoke_root" workspace status >/dev/null
+          "$bin" --root "$smoke_root" panel --port 0 >/tmp/loom-panel-smoke.log 2>&1 &
+          panel_pid="$!"
+          sleep 1
+          if ! kill -0 "$panel_pid" 2>/dev/null; then
+            cat /tmp/loom-panel-smoke.log
+            wait "$panel_pid"
+          fi
+          kill "$panel_pid"
+          wait "$panel_pid" 2>/dev/null || true
 
       - name: Upload release asset
         uses: actions/upload-artifact@v4
