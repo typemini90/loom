@@ -11,9 +11,26 @@ use tokio::io::AsyncReadExt;
 use super::auth::{registry_error, registry_ok};
 use super::{DiffParams, PanelState};
 
-pub(super) fn is_valid_git_rev(rev: &str) -> bool {
+pub(super) fn is_safe_git_ref(rev: &str) -> bool {
     let len = rev.len();
-    (7..=40).contains(&len) && rev.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    !rev.is_empty()
+        && len <= 256
+        && !rev.starts_with('-')
+        && !rev.contains("..")
+        && rev.bytes().all(|b| {
+            matches!(
+                b,
+                b'a'..=b'z'
+                    | b'A'..=b'Z'
+                    | b'0'..=b'9'
+                    | b'.'
+                    | b'_'
+                    | b'-'
+                    | b'/'
+                    | b'~'
+                    | b'^'
+            )
+        })
 }
 
 pub(super) fn is_valid_skill_name(name: &str) -> bool {
@@ -323,26 +340,26 @@ pub(super) async fn registry_skill_diff(
     }
 
     if let Some(ref r) = params.rev_a
-        && !is_valid_git_rev(r)
+        && !is_safe_git_ref(r)
     {
         return (
             StatusCode::BAD_REQUEST,
             registry_error(
                 CMD,
                 "GIT_DIFF_FAILED",
-                "rev_a must match [a-f0-9]{7,40}".to_string(),
+                "rev_a must be a safe git ref".to_string(),
             ),
         );
     }
     if let Some(ref r) = params.rev_b
-        && !is_valid_git_rev(r)
+        && !is_safe_git_ref(r)
     {
         return (
             StatusCode::BAD_REQUEST,
             registry_error(
                 CMD,
                 "GIT_DIFF_FAILED",
-                "rev_b must match [a-f0-9]{7,40}".to_string(),
+                "rev_b must be a safe git ref".to_string(),
             ),
         );
     }
