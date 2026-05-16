@@ -148,3 +148,32 @@ fn workspace_doctor_reports_missing_projection_path() {
         Value::String("rerun loom skill project or clean the orphaned projection".to_string())
     );
 }
+
+#[test]
+fn workspace_doctor_marks_pending_queue_warnings_unhealthy() {
+    let root = TestDir::new("doctor-pending-warning");
+    let target_path = root.path().join("live/claude-project-a");
+    assert!(
+        target_add(root.path(), "claude", &target_path, "managed")
+            .0
+            .status
+            .success()
+    );
+    fs::write(root.path().join("state/pending_ops.jsonl"), "not-json\n")
+        .expect("write malformed pending queue");
+
+    let (output, env) = run_loom(root.path(), &["workspace", "doctor"]);
+
+    assert!(output.status.success(), "doctor should succeed");
+    assert_eq!(env["data"]["healthy"], Value::Bool(false));
+    assert_eq!(
+        env["data"]["checks"]["pending_queue"]["warnings"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    let check = find_check(&env, "pending_queue_warnings");
+    assert_eq!(check["ok"], Value::Bool(false));
+    assert_eq!(check["severity"], Value::String("warning".to_string()));
+    assert_eq!(check["details"]["warning_count"], Value::from(1));
+}
