@@ -1,5 +1,5 @@
 use super::{
-    MAX_HUNK_LINES, is_valid_git_rev, is_valid_skill_name, parse_diff_git_path, parse_unified_diff,
+    MAX_HUNK_LINES, is_safe_git_ref, is_valid_skill_name, parse_diff_git_path, parse_unified_diff,
     registry_skill_diff,
 };
 use crate::panel::PanelState;
@@ -53,16 +53,6 @@ fn is_valid_skill_name_accepts_dotted_names() {
     assert!(!is_valid_skill_name(".."), ".. must be rejected");
     assert!(!is_valid_skill_name("foo/bar"), "/ must be rejected");
     assert!(!is_valid_skill_name(""), "empty must be rejected");
-}
-
-#[test]
-fn is_valid_git_rev_accepts_and_rejects() {
-    assert!(is_valid_git_rev("abc1234"));
-    assert!(is_valid_git_rev("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
-    assert!(!is_valid_git_rev("abc123"));
-    assert!(!is_valid_git_rev("abc123g"));
-    assert!(!is_valid_git_rev("HEAD"));
-    assert!(!is_valid_git_rev(""));
 }
 
 #[test]
@@ -267,6 +257,37 @@ fn parse_diff_git_path_decodes_octal_in_quoted_path() {
     assert_eq!(parse_diff_git_path(line), Some("skills/foo/文".to_string()));
 }
 
+#[test]
+fn git_ref_validation_accepts_tags_branches_and_head() {
+    for rev in [
+        "HEAD",
+        "HEAD~1",
+        "main",
+        "feature/diff-ref",
+        "release/foo/v1.0.0",
+        "snapshot/foo/20260516-deadbee",
+        "0123456789abcdef",
+    ] {
+        assert!(is_safe_git_ref(rev), "{rev} should be accepted");
+    }
+}
+
+#[test]
+fn git_ref_validation_rejects_option_like_ranges_and_pathspecs() {
+    for rev in [
+        "",
+        "--help",
+        "main..other",
+        "main other",
+        "main:skills/foo",
+        "feature/*",
+        "feature?[x]",
+        "bad\\ref",
+    ] {
+        assert!(!is_safe_git_ref(rev), "{rev:?} should be rejected");
+    }
+}
+
 #[tokio::test]
 async fn registry_skill_diff_returns_error_for_nonexistent_skill() {
     let root = std::env::temp_dir().join(format!("loom-diff-nopath-{}", Uuid::new_v4()));
@@ -387,6 +408,48 @@ async fn registry_skill_diff_returns_diff_for_two_commits() {
         all_lines.iter().any(|l| l.contains("line two")),
         "diff must contain the added line"
     );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
+async fn registry_skill_diff_accepts_release_and_snapshot_tag_refs() {
+    let root = std::env::temp_dir().join(format!("loom-diff-tag-{}", Uuid::new_v4()));
+    fs::create_dir_all(root.join("skills/foo")).unwrap();
+
+    let git = |args: &[&str]| git_ok(&root, args);
+
+    git(&["init"]);
+    git(&["config", "user.email", "test@example.com"]);
+    git(&["config", "user.name", "Test"]);
+
+    fs::write(root.join("skills/foo/foo.md"), "line one\n").unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "-m", "initial"]);
+    git(&["tag", "release/foo/v1.0.0"]);
+
+    fs::write(root.join("skills/foo/foo.md"), "line one\nline two\n").unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "-m", "add line two"]);
+    git(&["tag", "snapshot/foo/20260516-deadbee"]);
+
+    let state = make_state(&root);
+    let (status, Json(payload)) = registry_skill_diff(
+        AxumPath("foo".to_string()),
+        Query(super::super::DiffParams {
+            rev_a: Some("release/foo/v1.0.0".to_string()),
+            rev_b: Some("snapshot/foo/20260516-deadbee".to_string()),
+        }),
+        State(state),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    assert_eq!(payload["ok"], json!(true));
+    assert_eq!(payload["data"]["rev_a"].as_str().map(|s| s.len()), Some(40));
+    assert_eq!(payload["data"]["rev_b"].as_str().map(|s| s.len()), Some(40));
+    let files = payload["data"]["files"].as_array().expect("files array");
+    assert_eq!(files[0]["added"], json!(1));
 
     let _ = fs::remove_dir_all(&root);
 }
