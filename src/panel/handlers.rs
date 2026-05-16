@@ -10,8 +10,8 @@ use serde_json::json;
 
 use crate::cli::{
     AddArgs, CaptureArgs, Command, HistoryRepairStrategyArg, OpsCommand, OpsHistoryCommand,
-    ProjectArgs, ProjectionMethod, RemoteCommand, SyncCommand, TargetCommand, TargetOwnership,
-    WorkspaceBindingCommand, WorkspaceCommand,
+    OrphanCleanArgs, ProjectArgs, ProjectionMethod, RemoteCommand, SkillOrphanCommand, SyncCommand,
+    TargetCommand, TargetOwnership, WorkspaceBindingCommand, WorkspaceCommand,
 };
 use crate::commands::{
     App, CommandFailure, collect_skill_inventory, redact_sensitive_string, remote_status_payload,
@@ -26,8 +26,8 @@ use super::auth::{
     status_for_registry_error_payload,
 };
 use super::{
-    BindingAddRequest, CaptureRequest, HistoryRepairRequest, PanelState, ProjectRequest,
-    RemoteSetRequest, SkillAddRequest, TargetAddRequest,
+    BindingAddRequest, CaptureRequest, HistoryRepairRequest, OrphanCleanRequest, PanelState,
+    ProjectRequest, RemoteSetRequest, SkillAddRequest, TargetAddRequest,
 };
 
 /// Accept `[a-z0-9_-]{1,64}` for `policy_profile`. The core CLI path enforces
@@ -668,6 +668,30 @@ pub(super) async fn registry_capture(
                 instance: req.instance,
                 message: req.message,
             }),
+        },
+    )
+}
+
+pub(super) async fn registry_orphan_clean(
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    State(state): State<PanelState>,
+    Json(req): Json<OrphanCleanRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    if let Some(response) = ensure_mutation_authorized(&state, peer, &headers, "skill.orphan.clean")
+    {
+        return response;
+    }
+    run_panel_command(
+        &state,
+        "skill.orphan.clean",
+        StatusCode::OK,
+        Command::Skill {
+            command: crate::cli::SkillCommand::Orphan {
+                command: SkillOrphanCommand::Clean(OrphanCleanArgs {
+                    delete_live_paths: req.delete_live_paths,
+                }),
+            },
         },
     )
 }

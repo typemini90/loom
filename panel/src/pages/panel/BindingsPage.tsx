@@ -5,19 +5,40 @@ import { PlusIcon } from "../../components/icons/nav_icons";
 import { BindingAddForm } from "../../components/panel/forms/BindingAddForm";
 import { api, ApiError, type BindingShowPayload } from "../../lib/api/client";
 import { useMutation } from "../../lib/useMutation";
+import type { RegistryProjection } from "../../generated/RegistryProjection";
 
 interface BindingsPageProps {
   bindings: Binding[];
   targets: Target[];
+  projections?: RegistryProjection[];
   onMutation: () => void;
   readOnly: boolean;
   mutationVersion: number;
 }
 
-export function BindingsPage({ bindings, targets, onMutation, readOnly, mutationVersion }: BindingsPageProps) {
+export function BindingsPage({
+  bindings,
+  targets,
+  projections = [],
+  onMutation,
+  readOnly,
+  mutationVersion,
+}: BindingsPageProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [deleteLivePaths, setDeleteLivePaths] = useState(false);
   const sel = bindings.find((b) => b.id === selectedId) ?? null;
+  const cleanOrphans = useMutation();
+  const orphanProjections = projections.filter((p) => !p.binding_id && p.health === "orphaned");
+
+  const runCleanOrphans = () => {
+    if (readOnly || orphanProjections.length === 0) return;
+    cleanOrphans.run(
+      "clean orphaned projections",
+      () => api.orphanClean({ delete_live_paths: deleteLivePaths }),
+      onMutation,
+    );
+  };
 
   useEffect(() => {
     if (readOnly) setAddOpen(false);
@@ -45,6 +66,62 @@ export function BindingsPage({ bindings, targets, onMutation, readOnly, mutation
         </div>
       </div>
       <div className="page-body" style={{ padding: 0 }}>
+        {orphanProjections.length > 0 && (
+          <div
+            style={{
+              margin: "0 28px 12px",
+              padding: "10px 12px",
+              borderRadius: 6,
+              border: "1px solid rgba(216,167,50,0.35)",
+              background: "rgba(216,167,50,0.08)",
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ minWidth: 220 }}>
+              <div style={{ color: "var(--warn)", fontWeight: 700, fontSize: 12 }}>
+                {orphanProjections.length} orphaned projection{orphanProjections.length === 1 ? "" : "s"}
+              </div>
+              <div className="mono" style={{ color: "var(--ink-2)", fontSize: 11, marginTop: 3 }}>
+                {orphanProjections.map((p) => p.instance_id).join(", ")}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <label className="row-flex" style={{ fontSize: 12, color: "var(--ink-2)" }}>
+                <input
+                  type="checkbox"
+                  checked={deleteLivePaths}
+                  onChange={(event) => setDeleteLivePaths(event.currentTarget.checked)}
+                  disabled={readOnly || cleanOrphans.busy}
+                />
+                Delete live paths
+              </label>
+              <button
+                className="btn ghost danger"
+                onClick={runCleanOrphans}
+                disabled={readOnly || cleanOrphans.busy}
+                title={readOnly ? "registry offline" : "clean orphaned projection metadata"}
+              >
+                {cleanOrphans.busy ? "Cleaning..." : "Clean metadata"}
+              </button>
+            </div>
+            {(cleanOrphans.error || cleanOrphans.success) && (
+              <div
+                className="mono"
+                style={{
+                  flexBasis: "100%",
+                  color: cleanOrphans.error ? "var(--err)" : "var(--ok)",
+                  fontSize: 11,
+                }}
+              >
+                {cleanOrphans.error ?? cleanOrphans.success}
+              </div>
+            )}
+          </div>
+        )}
         {addOpen && (
           <div style={{ padding: "0 28px 12px" }}>
             <BindingAddForm
@@ -151,7 +228,6 @@ function BindingDetail({
   onRemoved: (bindingId: string) => void;
 }) {
   const [state, setState] = useState<DetailState>({ kind: "idle" });
-  const [orphanedIds, setOrphanedIds] = useState<string[]>([]);
   const project = useMutation();
   const remove = useMutation();
 
@@ -205,16 +281,10 @@ function BindingDetail({
   const runRemove = () => {
     if (readOnly) return;
     if (!window.confirm(`Delete binding ${binding.id}? This removes the binding metadata from the registry.`)) return;
-    let orphaned: string[] = [];
     remove.run(
       "delete binding",
-      async () => {
-        const res = await api.bindingRemove(binding.id);
-        const ids = res.data?.orphaned_projection_ids;
-        if (Array.isArray(ids)) orphaned = ids as string[];
-      },
+      () => api.bindingRemove(binding.id),
       () => {
-        if (orphaned.length > 0) setOrphanedIds(orphaned);
         onRemoved(binding.id);
         onMutation();
       },
@@ -253,31 +323,6 @@ function BindingDetail({
           {remove.busy ? "Deleting…" : "Delete binding"}
         </button>
       </div>
-      {orphanedIds.length > 0 && (
-        <div
-          style={{
-            marginBottom: 12,
-            padding: "6px 10px",
-            borderRadius: 6,
-            border: "1px solid rgba(216,167,50,0.35)",
-            background: "rgba(216,167,50,0.08)",
-            color: "var(--warn)",
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-          }}
-        >
-          {orphanedIds.length} projection(s) orphaned: {orphanedIds.join(", ")}
-          {" — run "}
-          <span style={{ fontWeight: 600 }}>loom skill orphan clean</span>
-          {" to remove metadata."}
-          <button
-            style={{ marginLeft: 10, cursor: "pointer", background: "none", border: "none", color: "inherit", textDecoration: "underline", fontSize: "inherit", fontFamily: "inherit", padding: 0 }}
-            onClick={() => setOrphanedIds([])}
-          >
-            dismiss
-          </button>
-        </div>
-      )}
       {(project.error || project.success || remove.error || remove.success) && (
         <div
           style={{

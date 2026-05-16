@@ -270,6 +270,10 @@ export interface CaptureBody {
   message?: string;
 }
 
+export interface OrphanCleanBody {
+  delete_live_paths?: boolean;
+}
+
 export interface HistoryRepairBody {
   strategy: "local" | "remote";
 }
@@ -360,6 +364,7 @@ export const api = {
   skillAdd: (body: SkillAddBody) => postJson("/api/registry/skills", body),
   project: (body: ProjectBody) => postJson("/api/registry/project", body),
   capture: (body: CaptureBody) => postJson("/api/registry/capture", body),
+  orphanClean: (body: OrphanCleanBody) => postJson("/api/registry/orphans/clean", body),
 
   syncPush: () => postJson("/api/sync/push", {}),
   syncPull: () => postJson("/api/sync/pull", {}),

@@ -1,9 +1,12 @@
 use super::*;
 use crate::panel::handlers::{
-    OpsQuery, info, pending, registry_ops, remote_set, remote_status, v1_overview, v1_registry_ops,
-    v1_registry_targets, v1_workspace_status,
+    OpsQuery, info, pending, registry_ops, registry_orphan_clean, remote_set, remote_status,
+    v1_overview, v1_registry_ops, v1_registry_targets, v1_workspace_status,
 };
-use crate::state_model::{REGISTRY_SCHEMA_VERSION, RegistryOperationRecord};
+use crate::state_model::{
+    REGISTRY_SCHEMA_VERSION, RegistryOperationRecord, RegistryProjectionInstance,
+    RegistryProjectionsFile,
+};
 use axum::{
     Json,
     extract::{ConnectInfo, Query},
@@ -311,6 +314,57 @@ async fn remote_set_configures_origin_from_authorized_panel_request() {
     assert_eq!(remote_status_code, StatusCode::OK);
     assert_eq!(remote_payload["data"]["remote"]["configured"], json!(true));
     assert_eq!(remote_payload["data"]["remote"]["url"], json!(url));
+
+    cleanup_root(root);
+}
+
+#[tokio::test]
+async fn registry_orphan_clean_uses_cli_envelope_and_records_operation() {
+    let (root, state) = make_test_state();
+    write_registry_snapshot(&root, REGISTRY_SCHEMA_VERSION);
+    let paths = RegistryStatePaths::from_root(&root);
+    fs::write(
+        &paths.projections_file,
+        serde_json::to_vec_pretty(&RegistryProjectionsFile {
+            schema_version: REGISTRY_SCHEMA_VERSION,
+            projections: vec![RegistryProjectionInstance {
+                instance_id: "inst-orphan".to_string(),
+                skill_id: "skill.writer".to_string(),
+                binding_id: None,
+                target_id: "target-1".to_string(),
+                materialized_path: root.join("live/skill.writer").display().to_string(),
+                method: "copy".to_string(),
+                last_applied_rev: "deadbeef".to_string(),
+                health: "orphaned".to_string(),
+                observed_drift: Some(false),
+                updated_at: Some(Utc::now()),
+            }],
+        })
+        .expect("serialize orphan projection"),
+    )
+    .expect("write orphan projection");
+
+    let peer = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 40000);
+    let mut headers = HeaderMap::new();
+    headers.insert("origin", HeaderValue::from_static("http://127.0.0.1:43117"));
+
+    let (status, Json(payload)) = registry_orphan_clean(
+        ConnectInfo(peer),
+        headers,
+        State(state),
+        Json(super::super::OrphanCleanRequest {
+            delete_live_paths: false,
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    assert_eq!(payload["ok"], json!(true));
+    assert_eq!(payload["cmd"], json!("skill.orphan.clean"));
+    assert_eq!(payload["data"]["cleaned_count"], json!(1));
+    assert!(payload["meta"]["op_id"].as_str().is_some());
+    let snapshot = paths.load_snapshot().expect("load snapshot");
+    assert!(snapshot.projections.projections.is_empty());
 
     cleanup_root(root);
 }
