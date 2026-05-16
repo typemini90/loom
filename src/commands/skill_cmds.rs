@@ -397,6 +397,7 @@ impl App {
         let mut source_backup = None;
         let mut source_replaced = false;
         if projection.method != "symlink" {
+            ensure_capture_source_not_drifted(&self.ctx, &projection, Path::new(&skill_rel))?;
             let tmp_path = self
                 .ctx
                 .state_dir
@@ -1420,6 +1421,62 @@ fn rollback_capture_mutation(
     }
 
     let _ = gitops::restore_index(ctx, previous_index);
+}
+
+fn ensure_capture_source_not_drifted(
+    ctx: &crate::state::AppContext,
+    projection: &RegistryProjectionInstance,
+    skill_rel: &Path,
+) -> std::result::Result<(), CommandFailure> {
+    let skill_rel_str = skill_rel.to_string_lossy();
+    let committed = git_diff_has_changes(
+        ctx,
+        &[&projection.last_applied_rev, "HEAD", "--", &skill_rel_str],
+    )?;
+    let staged = git_diff_has_changes(ctx, &["--cached", "--", &skill_rel_str])?;
+    let unstaged = git_diff_has_changes(ctx, &["--", &skill_rel_str])?;
+
+    if !(committed || staged || unstaged) {
+        return Ok(());
+    }
+
+    let current_rev = gitops::head(ctx).map_err(map_git)?;
+    let mut failure = CommandFailure::new(
+        ErrorCode::CaptureConflict,
+        format!(
+            "source skill '{}' changed since projection '{}'; save or rollback source changes before capture",
+            projection.skill_id, projection.instance_id
+        ),
+    );
+    failure.details = json!({
+        "skill_id": projection.skill_id,
+        "instance_id": projection.instance_id,
+        "source_path": skill_rel.display().to_string(),
+        "last_applied_rev": projection.last_applied_rev,
+        "current_rev": current_rev,
+        "committed": committed,
+        "staged": staged,
+        "unstaged": unstaged
+    });
+    Err(failure)
+}
+
+fn git_diff_has_changes(
+    ctx: &crate::state::AppContext,
+    args: &[&str],
+) -> std::result::Result<bool, CommandFailure> {
+    let mut full_args = vec!["diff", "--quiet"];
+    full_args.extend(args.iter().copied());
+    let output = gitops::run_git_allow_failure(ctx, &full_args).map_err(map_git)?;
+    match output.status.code() {
+        Some(0) => Ok(false),
+        Some(1) => Ok(true),
+        _ => Err(map_git(anyhow::anyhow!(
+            "git {:?} failed: {}",
+            full_args,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))),
+    }
 }
 
 fn rollback_registry_state(
