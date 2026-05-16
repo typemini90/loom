@@ -89,6 +89,12 @@ pub(super) struct RemoteSetRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct OrphanCleanRequest {
+    #[serde(default)]
+    pub(super) delete_live_paths: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct DiffParams {
     #[serde(default)]
     pub(super) rev_a: Option<String>,
@@ -146,6 +152,7 @@ pub async fn run_panel(ctx: AppContext, port: u16) -> Result<()> {
         .route("/api/registry/skills", post(registry_skill_add))
         .route("/api/registry/project", post(registry_project))
         .route("/api/registry/capture", post(registry_capture))
+        .route("/api/registry/orphans/clean", post(registry_orphan_clean))
         .route(
             "/api/registry/skills/{skill_name}/diff",
             get(registry_skill_diff),

@@ -11,6 +11,7 @@ import { OverviewPage } from "./OverviewPage";
 import { BindingAddForm } from "../../components/panel/forms/BindingAddForm";
 import { api, type BindingShowPayload, type OpsPayload, type TargetShowPayload, type RegistryOperationRecord } from "../../lib/api/client";
 import type { Binding, Skill, Target } from "../../lib/types";
+import type { RegistryProjection } from "../../generated/RegistryProjection";
 
 const originalWindow = (globalThis as { window?: unknown }).window;
 const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
@@ -111,6 +112,18 @@ function makeSkill(): Skill {
     ruleCount: 1,
     changed: "now",
     targets: ["target-1"],
+  };
+}
+
+function makeOrphanProjection(): RegistryProjection {
+  return {
+    instance_id: "inst-orphan",
+    skill_id: "skill.writer",
+    target_id: "target-1",
+    materialized_path: "/tmp/inst-orphan",
+    method: "copy",
+    last_applied_rev: "deadbeefcafebabe",
+    health: "orphaned",
   };
 }
 
@@ -360,6 +373,54 @@ test("BindingsPage refetches selected binding details after a successful project
   } finally {
     api.bindingShow = originalBindingShow;
     api.project = originalProject;
+  }
+});
+
+test("BindingsPage exposes orphan cleanup from live projection data", async () => {
+  const originalOrphanClean = api.orphanClean;
+  const calls: Array<{ delete_live_paths?: boolean }> = [];
+  let mutations = 0;
+
+  api.orphanClean = async (body) => {
+    calls.push(body);
+    return {
+      ok: true,
+      cmd: "skill.orphan.clean",
+      request_id: "req-orphan",
+      data: { cleaned_count: 1 },
+    };
+  };
+
+  try {
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        <BindingsPage
+          bindings={[makeBinding()]}
+          targets={[makeTarget()]}
+          projections={[makeOrphanProjection()]}
+          readOnly={false}
+          mutationVersion={0}
+          onMutation={() => {
+            mutations += 1;
+          }}
+        />,
+      );
+    });
+
+    expect(markup(renderer!).includes("inst-orphan")).toBe(true);
+    expect(markup(renderer!).includes("orphaned projection")).toBe(true);
+
+    await act(async () => {
+      buttonByLabel(renderer!, "Clean metadata").props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(calls).toEqual([{ delete_live_paths: false }]);
+    expect(mutations).toBe(1);
+  } finally {
+    api.orphanClean = originalOrphanClean;
   }
 });
 

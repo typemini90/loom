@@ -187,6 +187,7 @@ export function PanelApp() {
         <BindingsPage
           bindings={bindings}
           targets={targets}
+          projections={live.projections}
           onMutation={onMutation}
           readOnly={readOnly}
           mutationVersion={mutationVersion}

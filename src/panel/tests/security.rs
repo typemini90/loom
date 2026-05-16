@@ -13,7 +13,7 @@ use serde_json::json;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 // Exhaustive list of every panel mutation command. Must stay in sync with the
-// 13-row table in docs/LOOM_ARCHITECTURE_DECISIONS.md section 4.1 and the
+// 14-row table in docs/LOOM_ARCHITECTURE_DECISIONS.md section 4.1 and the
 // route registrations in `run_panel`.
 const MUTATION_COMMANDS: &[&str] = &[
     "target.add",
@@ -22,6 +22,7 @@ const MUTATION_COMMANDS: &[&str] = &[
     "workspace.binding.remove",
     "skill.project",
     "skill.capture",
+    "skill.orphan.clean",
     "workspace.remote.set",
     "ops.retry",
     "ops.purge",
@@ -32,8 +33,8 @@ const MUTATION_COMMANDS: &[&str] = &[
 ];
 
 #[test]
-fn mutation_commands_count_is_thirteen() {
-    assert_eq!(MUTATION_COMMANDS.len(), 13);
+fn mutation_commands_count_is_fourteen() {
+    assert_eq!(MUTATION_COMMANDS.len(), 14);
 }
 
 #[test]
