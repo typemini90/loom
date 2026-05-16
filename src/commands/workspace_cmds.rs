@@ -131,6 +131,7 @@ impl App {
         let pending_ops = pending_report.ops.len();
         let target_dirs = resolve_agent_skill_dirs(&self.ctx.root);
         let registry_paths = RegistryStatePaths::from_app_context(&self.ctx);
+        let legacy_state_dir_present = registry_paths.legacy_state_dir_exists();
         let registry_status = registry_paths
             .maybe_load_snapshot()
             .map_err(map_registry_state)?
@@ -140,8 +141,15 @@ impl App {
                     "state_model": "registry",
                     "available": false,
                     "error": {
-                        "code": "STATE_CORRUPT",
-                        "message": format!("registry state not initialized under {}", registry_paths.registry_dir.display())
+                        "code": if legacy_state_dir_present { "SCHEMA_MISMATCH" } else { "STATE_CORRUPT" },
+                        "message": if legacy_state_dir_present {
+                            format!(
+                                "legacy registry state found under {}; run a write command to migrate it",
+                                registry_paths.state_dir.join("v3").display()
+                            )
+                        } else {
+                            format!("registry state not initialized under {}", registry_paths.registry_dir.display())
+                        }
                     }
                 })
             });

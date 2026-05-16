@@ -180,9 +180,19 @@ impl App {
             )
         })?;
 
+        if target.agent != binding.agent {
+            return Err(CommandFailure::new(
+                ErrorCode::TargetAgentMismatch,
+                format!(
+                    "binding '{}' is for agent '{}' but target '{}' is for agent '{}'",
+                    binding.binding_id, binding.agent, target.target_id, target.agent
+                ),
+            ));
+        }
+
         if target.ownership != "managed" {
             return Err(CommandFailure::new(
-                ErrorCode::ArgInvalid,
+                ErrorCode::TargetNotManaged,
                 format!(
                     "target '{}' has ownership '{}' and cannot be projected into",
                     target.target_id, target.ownership
@@ -206,7 +216,7 @@ impl App {
             let probe = probe_symlink(&target_base);
             if !probe.supported {
                 return Err(CommandFailure::new(
-                    ErrorCode::ArgInvalid,
+                    ErrorCode::ProjectionMethodUnsupported,
                     format!(
                         "target '{}' filesystem does not support symlink projection: {}. \
                          retry with --method copy",
