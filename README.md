@@ -200,6 +200,7 @@ Quick decision: **edits from the agent side → `capture`; edits inside the regi
 - State-changing registry commands commit `state/registry` to Git, and `sync push` has a safety commit before pushing.
 - Hard write guard: if `--root` points to the Loom tool repo itself, write operations are rejected. Use an independent skill registry repo for mutable operations.
 - English is the primary documentation language. [中文完整指南](docs/LOOM_COMPLETE_GUIDE_ZH.md).
+- V1 planning lives in [Loom V1 Core Spec](docs/LOOM_V1_CORE_SPEC.md).
 
 ## Command Surface
 

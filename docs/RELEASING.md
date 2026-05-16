@@ -26,7 +26,10 @@ Configure repository secrets:
    make fmt-check
    make lint
    make test
+   make panel-typecheck
+   make panel-test
    make panel-build
+   make e2e
    cargo publish --dry-run --locked
    ```
 
@@ -48,6 +51,7 @@ After the release is published:
 ```bash
 cargo install skillloom
 loom --help
+loom --version
 ```
 
 After the Homebrew PR is merged:
@@ -55,4 +59,5 @@ After the Homebrew PR is merged:
 ```bash
 brew install majiayu000/tap/loom
 loom --help
+loom --version
 ```
