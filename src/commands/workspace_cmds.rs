@@ -241,6 +241,7 @@ impl App {
             registry_schema_ok,
             registry_snapshot.as_ref(),
             history.conflicts.is_empty(),
+            pending_report.warnings.as_slice(),
         );
         let checks_v1_ok = checks_v1
             .iter()
@@ -821,6 +822,7 @@ fn build_doctor_checks(
     registry_schema_ok: bool,
     snapshot: Option<&RegistrySnapshot>,
     history_ok: bool,
+    pending_warnings: &[String],
 ) -> Vec<Value> {
     let mut checks = vec![
         doctor_check(
@@ -874,6 +876,22 @@ fn build_doctor_checks(
             },
             "run loom ops history diagnose and repair before syncing",
             json!({}),
+        ),
+        doctor_check(
+            "pending_queue",
+            "pending_queue_warnings",
+            pending_warnings.is_empty(),
+            "warning",
+            if pending_warnings.is_empty() {
+                "pending queue parsed without warnings"
+            } else {
+                "pending queue has malformed or ignored entries"
+            },
+            "inspect state/pending_ops.jsonl and repair or purge malformed queue entries",
+            json!({
+                "warning_count": pending_warnings.len(),
+                "warnings": pending_warnings
+            }),
         ),
     ];
 
