@@ -4,8 +4,8 @@ use anyhow::{Result, anyhow};
 use uuid::Uuid;
 
 use crate::cli::{
-    AgentKind, BindingAddArgs, Command, OpsCommand, OpsHistoryCommand, ProjectionMethod,
-    SkillCommand, SkillOrphanCommand, SyncCommand, TargetAddArgs, TargetCommand,
+    AgentCommand, AgentKind, BindingAddArgs, Command, OpsCommand, OpsHistoryCommand,
+    ProjectionMethod, SkillCommand, SkillOrphanCommand, SyncCommand, TargetAddArgs, TargetCommand,
     WorkspaceBindingCommand, WorkspaceCommand, WorkspaceMatcherKind,
 };
 use crate::state::AppContext;
@@ -125,6 +125,7 @@ pub(crate) fn command_name(command: &Command) -> &'static str {
             SkillCommand::Release(_) => "skill.release",
             SkillCommand::Rollback(_) => "skill.rollback",
             SkillCommand::Diff(_) => "skill.diff",
+            SkillCommand::Verify(_) => "skill.verify",
             SkillCommand::Orphan {
                 command: SkillOrphanCommand::List,
             } => "skill.orphan.list",
@@ -134,7 +135,7 @@ pub(crate) fn command_name(command: &Command) -> &'static str {
         },
         Command::Sync { command } => match command {
             SyncCommand::Status => "sync.status",
-            SyncCommand::Push => "sync.push",
+            SyncCommand::Push(_) => "sync.push",
             SyncCommand::Pull => "sync.pull",
             SyncCommand::Replay => "sync.replay",
         },
@@ -146,6 +147,9 @@ pub(crate) fn command_name(command: &Command) -> &'static str {
                 OpsHistoryCommand::Diagnose => "ops.history.diagnose",
                 OpsHistoryCommand::Repair(_) => "ops.history.repair",
             },
+        },
+        Command::Agent { command } => match command {
+            AgentCommand::Preflight(_) => "agent.preflight",
         },
         Command::Panel(_) => "panel",
     }
