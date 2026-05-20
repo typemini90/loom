@@ -115,12 +115,8 @@ fn workspace_init_scan_existing_concurrent_inits_leave_consistent_state() {
         .spawn()
         .expect("spawn second loom process");
 
-    let out1 = child1
-        .wait_with_output()
-        .expect("wait for first process");
-    let out2 = child2
-        .wait_with_output()
-        .expect("wait for second process");
+    let out1 = child1.wait_with_output().expect("wait for first process");
+    let out2 = child2.wait_with_output().expect("wait for second process");
 
     // At least one must succeed; the other may get LOCK_BUSY.
     assert!(
