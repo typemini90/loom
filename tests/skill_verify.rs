@@ -26,8 +26,8 @@ fn skill_verify_matches_after_save() {
         "head_tree_oid must be populated after save"
     );
     assert!(
-        env["data"]["last_save_commit"].is_string(),
-        "last_save_commit must be populated after save"
+        env["data"]["last_source_commit"].is_string(),
+        "last_source_commit must be populated after save"
     );
 }
 

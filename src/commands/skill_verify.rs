@@ -26,7 +26,7 @@ impl App {
         }
 
         let head_tree_oid = head_tree_oid_for_path(&self.ctx, &skill_rel).map_err(map_git)?;
-        let last_save_commit = last_commit_for_path(&self.ctx, &skill_rel).map_err(map_git)?;
+        let last_source_commit = last_commit_for_path(&self.ctx, &skill_rel).map_err(map_git)?;
         let drifted_paths = drifted_paths_under(&self.ctx, &skill_rel).map_err(map_git)?;
         let matches = drifted_paths.is_empty() && head_tree_oid.is_some();
 
@@ -35,7 +35,7 @@ impl App {
                 "skill": args.skill,
                 "matches": matches,
                 "head_tree_oid": head_tree_oid,
-                "last_save_commit": last_save_commit,
+                "last_source_commit": last_source_commit,
                 "drifted_paths": drifted_paths,
             }),
             Meta::default(),
@@ -47,7 +47,11 @@ fn head_tree_oid_for_path(ctx: &AppContext, path: &str) -> Result<Option<String>
     let output = run_git_allow_failure(ctx, &["rev-parse", &format!("HEAD:{path}")])?;
     if output.status.success() {
         let oid = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if oid.is_empty() { Ok(None) } else { Ok(Some(oid)) }
+        if oid.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(oid))
+        }
     } else {
         Ok(None)
     }
@@ -84,13 +88,7 @@ fn drifted_paths_under(ctx: &AppContext, prefix: &str) -> Result<Vec<String>> {
     }
     let untracked = run_git(
         ctx,
-        &[
-            "ls-files",
-            "--others",
-            "--exclude-standard",
-            "--",
-            prefix,
-        ],
+        &["ls-files", "--others", "--exclude-standard", "--", prefix],
     )?;
     for line in untracked.lines() {
         let p = line.trim();
