@@ -10,6 +10,7 @@ mod skill_cmds;
 mod skill_verify;
 mod sync_cmds;
 mod target_cmds;
+mod trash_cmds;
 mod version_cmds;
 mod watch_cmds;
 mod workspace_cmds;
@@ -20,8 +21,8 @@ use uuid::Uuid;
 
 use crate::cli::{
     AgentCommand, Cli, Command, OpsCommand, OpsHistoryCommand, RemoteCommand, SkillCommand,
-    SkillOrphanCommand, SyncCommand, TargetCommand, WorkspaceBindingCommand, WorkspaceCommand,
-    WorkspaceInitArgs,
+    SkillOrphanCommand, SkillTrashCommand, SyncCommand, TargetCommand, WorkspaceBindingCommand,
+    WorkspaceCommand, WorkspaceInitArgs,
 };
 use crate::envelope::{Envelope, Meta};
 use crate::state::AppContext;
@@ -189,6 +190,18 @@ impl App {
                 SkillCommand::Rollback(args) => self.cmd_rollback(args, &request_id),
                 SkillCommand::Diff(args) => self.cmd_diff(args),
                 SkillCommand::History(args) => self.cmd_history(args),
+                SkillCommand::Trash {
+                    command: SkillTrashCommand::Add(args),
+                } => self.cmd_skill_trash_add(args, &request_id),
+                SkillCommand::Trash {
+                    command: SkillTrashCommand::List,
+                } => self.cmd_skill_trash_list(),
+                SkillCommand::Trash {
+                    command: SkillTrashCommand::Restore(args),
+                } => self.cmd_skill_trash_restore(args, &request_id),
+                SkillCommand::Trash {
+                    command: SkillTrashCommand::Purge(args),
+                } => self.cmd_skill_trash_purge(args, &request_id),
                 SkillCommand::Verify(args) => self.cmd_verify(args),
                 SkillCommand::Orphan {
                     command: SkillOrphanCommand::List,
@@ -324,6 +337,9 @@ fn command_records_audit(command: &Command) -> bool {
             | Command::Backup { .. }
             | Command::Skill {
                 command: SkillCommand::History(_)
+                    | SkillCommand::Trash {
+                        command: SkillTrashCommand::List,
+                    }
             }
     ) && !is_rollback_preview(command)
 }
@@ -355,6 +371,12 @@ fn command_requires_durable_audit(command: &Command) -> bool {
             | SkillCommand::Watch(_)
             | SkillCommand::Snapshot(_)
             | SkillCommand::Release(_)
+            | SkillCommand::Trash {
+                command:
+                    SkillTrashCommand::Add(_)
+                    | SkillTrashCommand::Restore(_)
+                    | SkillTrashCommand::Purge(_),
+            }
             | SkillCommand::Orphan {
                 command: SkillOrphanCommand::Clean(_),
             } => true,
@@ -362,6 +384,9 @@ fn command_requires_durable_audit(command: &Command) -> bool {
             SkillCommand::Diff(_)
             | SkillCommand::History(_)
             | SkillCommand::Verify(_)
+            | SkillCommand::Trash {
+                command: SkillTrashCommand::List,
+            }
             | SkillCommand::Orphan {
                 command: SkillOrphanCommand::List,
             } => false,
