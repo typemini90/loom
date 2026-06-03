@@ -383,6 +383,57 @@ test("OverviewPage disables add binding until a target exists", async () => {
   expect(addBinding.props.title).toBe("add a target first");
 });
 
+test("OverviewPage imports observed targets from the first managed-skill step", async () => {
+  const originalImportObserved = api.skillImportObserved;
+  let importCount = 0;
+  let mutationCount = 0;
+  api.skillImportObserved = async () => {
+    importCount += 1;
+    return { ok: true, cmd: "skill.import_observed", request_id: "req-import" };
+  };
+
+  try {
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        <OverviewPage
+          skills={[]}
+          targets={[makeTarget({ ownership: "observed" })]}
+          ops={[]}
+          projections={[]}
+          vizMode="loom"
+          setVizMode={() => {}}
+          selectedSkill={null}
+          selectedTarget={null}
+          onSelectSkill={() => {}}
+          onSelectTarget={() => {}}
+          registryRoot={null}
+          onMutation={() => {
+            mutationCount += 1;
+          }}
+          onNewTarget={() => {}}
+          onNewBinding={() => {}}
+          onOpenSkills={() => {}}
+          onViewActivity={() => {}}
+          onOpenSync={() => {}}
+          readOnly={false}
+        />,
+      );
+    });
+
+    expect(markup(renderer!).includes("Import creates managed skills")).toBe(true);
+    await act(async () => {
+      buttonByLabel(renderer!, "Import observed skills").props.onClick();
+      await Promise.resolve();
+    });
+
+    expect(importCount).toBe(1);
+    expect(mutationCount).toBe(1);
+  } finally {
+    api.skillImportObserved = originalImportObserved;
+  }
+});
+
 test("BindingAddForm submits the canonical matcher kind", async () => {
   const originalBindingAdd = api.bindingAdd;
   const submissions: Array<Parameters<typeof api.bindingAdd>[0]> = [];

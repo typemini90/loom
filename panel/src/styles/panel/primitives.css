@@ -39,6 +39,21 @@
   font-size: 11.5px;
 }
 
+.mutation-note {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(111, 183, 138, 0.25);
+  background: rgba(111, 183, 138, 0.08);
+  color: var(--ok);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.mutation-note[data-tone="err"] {
+  border-color: rgba(216, 90, 90, 0.3);
+  background: rgba(216, 90, 90, 0.08);
+  color: var(--err);
+}
+
 .card {
   background: var(--bg-1);
   border: 1px solid var(--line);
@@ -334,4 +349,30 @@
   padding: 40px 16px;
   font-family: var(--font-mono);
   font-size: 12px;
+}
+
+.observed-import-empty {
+  display: grid;
+  justify-items: center;
+}
+
+.observed-import-empty .mutation-note {
+  margin-top: 12px;
+}
+
+.observed-import-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.observed-import-panel .mutation-note {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .observed-import-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

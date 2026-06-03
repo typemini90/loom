@@ -40,6 +40,9 @@ export function SkillsPage({
   const filtered = skills.filter((s) => s.name.includes(q) || s.tag.includes(q));
   const sel = skills.find((s) => s.id === selectedSkill) ?? skills[0];
   const capture = useMutation();
+  const importObserved = useMutation();
+  const observedTargets = targets.filter((t) => t.ownership === "observed");
+  const showObservedImport = !q && skills.length === 0 && observedTargets.length > 0;
   const selectedSkillBindings = sel ? captureBindingsForSkill(sel.name, bindings, projections) : [];
   const bindingOptionKey = selectedSkillBindings.map((b) => `${b.id}\u001f${b.target}\u001f${b.method}`).join("\u001e");
   const captureBinding = selectedSkillBindings.find((b) => b.id === captureBindingId) ?? null;
@@ -66,6 +69,18 @@ export function SkillsPage({
     ? "Registry API offline."
     : q
     ? "No skills match the current filter."
+    : showObservedImport
+    ? (
+        <ObservedImportEmpty
+          observedTargetCount={observedTargets.length}
+          busy={importObserved.busy}
+          error={importObserved.error}
+          success={importObserved.success}
+          onImport={() =>
+            importObserved.run("import observed skills", () => api.skillImportObserved(), onMutation)
+          }
+        />
+      )
     : (
         <>
           No skills in this registry yet — use the <strong>+ skill add</strong> button above, or run{" "}
@@ -210,6 +225,40 @@ export function SkillsPage({
         </div>
       </div>
     </>
+  );
+}
+
+function ObservedImportEmpty({
+  observedTargetCount,
+  busy,
+  error,
+  success,
+  onImport,
+}: {
+  observedTargetCount: number;
+  busy: boolean;
+  error: string | null;
+  success: string | null;
+  onImport: () => void;
+}) {
+  return (
+    <div className="observed-import-empty">
+      <div style={{ color: "var(--ink-1)", fontSize: 13, marginBottom: 6 }}>
+        Observed skills are available to import.
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        Loom can read {observedTargetCount} observed target{observedTargetCount === 1 ? "" : "s"}.
+        Import creates managed registry skills; nothing is imported until you choose this action.
+      </div>
+      <button className="btn primary" onClick={onImport} disabled={busy}>
+        <PlusIcon /> {busy ? "Importing..." : "Import observed skills"}
+      </button>
+      {(error || success) && (
+        <div className="mutation-note" data-tone={error ? "err" : "ok"}>
+          {error ?? `✓ ${success}`}
+        </div>
+      )}
+    </div>
   );
 }
 

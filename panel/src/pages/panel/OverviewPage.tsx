@@ -1,7 +1,10 @@
+import type { ReactNode } from "react";
 import type { Op, ProjectionLink, Skill, Target, VizMode } from "../../lib/types";
 import { OpRow } from "../../components/panel/OpRow";
 import { ProjectionGraph } from "../../components/panel/ProjectionGraph";
 import { PlusIcon, RefreshIcon, ShieldIcon, TargetIcon } from "../../components/icons/nav_icons";
+import { api } from "../../lib/api/client";
+import { useMutation } from "../../lib/useMutation";
 
 interface OverviewPageProps {
   skills: Skill[];
@@ -36,6 +39,7 @@ export function OverviewPage({
   onSelectSkill,
   onSelectTarget,
   registryRoot,
+  onMutation,
   onNewTarget,
   onNewBinding,
   onOpenSkills,
@@ -45,10 +49,13 @@ export function OverviewPage({
 }: OverviewPageProps) {
   const selSkill = skills.find((s) => s.id === selectedSkill);
   const selTarget = targets.find((t) => t.id === selectedTarget);
+  const importObserved = useMutation();
   const pendingOps = ops.filter((o) => o.status === "pending").length;
   const errOps = ops.filter((o) => o.status === "err").length;
   const totalProjections = skills.reduce((a, s) => a + s.targets.length, 0);
   const totalRules = skills.reduce((a, s) => a + s.ruleCount, 0);
+  const observedTargets = targets.filter((t) => t.ownership === "observed");
+  const canImportObserved = skills.length === 0 && observedTargets.length > 0;
   const uniqueAgents = new Set(targets.map((t) => t.agent)).size;
   const uniqueProfiles = new Set(targets.map((t) => `${t.agent}/${t.profile}`)).size;
   const methodCounts = projections.reduce<Record<string, number>>((acc, p) => {
@@ -59,14 +66,22 @@ export function OverviewPage({
   const writeGuardTone = readOnly ? "warn" : "ok";
   const canAddBinding = !readOnly && targets.length > 0;
   const addBindingTitle = readOnly ? "registry offline" : !canAddBinding ? "add a target first" : undefined;
+  const runImportObserved = () => {
+    importObserved.run("import observed skills", () => api.skillImportObserved(), onMutation);
+  };
   const nextSteps: NextStep[] = [
     {
       label: "Add a skill",
-      detail: skills.length === 0 ? "No tracked skills yet." : `${skills.length} tracked skill${skills.length === 1 ? "" : "s"}.`,
+      detail: canImportObserved
+        ? `No managed registry skills yet. Import creates managed skills from ${observedTargets.length} observed target${observedTargets.length === 1 ? "" : "s"}.`
+        : skills.length === 0
+          ? "No tracked skills yet."
+          : `${skills.length} tracked skill${skills.length === 1 ? "" : "s"}.`,
       done: skills.length > 0,
-      action: "Open Skills",
-      onAction: onOpenSkills,
-      disabled: readOnly,
+      action: canImportObserved ? "Import observed skills" : "Open Skills",
+      onAction: canImportObserved ? runImportObserved : onOpenSkills,
+      disabled: readOnly || importObserved.busy,
+      title: readOnly ? "registry offline" : undefined,
     },
     {
       label: "Add a target",
@@ -138,6 +153,11 @@ export function OverviewPage({
             {nextSteps.map((step, index) => (
               <NextStepRow key={step.label} step={step} active={!step.done && nextSteps.findIndex((candidate) => !candidate.done) === index} />
             ))}
+            {(importObserved.error || importObserved.success) && (
+              <div className="mutation-note" data-tone={importObserved.error ? "err" : "ok"}>
+                {importObserved.error ?? `✓ ${importObserved.success}`}
+              </div>
+            )}
           </div>
         </div>
 
@@ -312,7 +332,7 @@ export function OverviewPage({
 
 interface NextStep {
   label: string;
-  detail: string;
+  detail: ReactNode;
   done: boolean;
   action: string;
   onAction: () => void;

@@ -1,4 +1,4 @@
-use super::PanelState;
+use super::{ImportObservedRequest, PanelState};
 use crate::panel::handlers::registry_status;
 use crate::state::AppContext;
 use crate::state_model::{

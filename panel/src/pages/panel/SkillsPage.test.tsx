@@ -9,6 +9,7 @@ vi.mock("../../lib/api/client", () => ({
     skillHistory: vi.fn(),
     skillDiff: vi.fn(),
     capture: vi.fn(),
+    skillImportObserved: vi.fn(),
     skillSave: vi.fn(),
     skillSnapshot: vi.fn(),
     skillRelease: vi.fn(),
@@ -293,6 +294,15 @@ describe("SkillsPage — history tab", () => {
 });
 
 describe("SkillsPage — empty registry", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    (api.skillImportObserved as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      cmd: "skill.import_observed",
+      request_id: "req-import",
+    });
+  });
+
   it("guides first-run users to the add button and the loom skill add CLI", () => {
     render(
       <SkillsPage
@@ -311,6 +321,28 @@ describe("SkillsPage — empty registry", () => {
     expect(
       screen.getAllByText(/loom skill add <source> --name <name>/).length,
     ).toBeGreaterThan(0);
+  });
+
+  it("offers explicit observed import when observed targets exist without managed skills", async () => {
+    const onMutation = vi.fn();
+    render(
+      <SkillsPage
+        skills={[]}
+        targets={[makeTarget({ ownership: "observed" })]}
+        selectedSkill={null}
+        onSelectSkill={() => {}}
+        onMutation={onMutation}
+        readOnly={false}
+      />,
+    );
+
+    expect(screen.getAllByText(/Import creates managed registry skills/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: /Import observed skills/ })[0]);
+
+    await waitFor(() => {
+      expect(api.skillImportObserved).toHaveBeenCalledWith();
+      expect(onMutation).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
