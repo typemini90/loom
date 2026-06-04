@@ -7,6 +7,7 @@ import type { RegistryProjection } from "../../generated/RegistryProjection";
 vi.mock("../../lib/api/client", () => ({
   api: {
     skillHistory: vi.fn(),
+    skillDiagnose: vi.fn(),
     skillDiff: vi.fn(),
     capture: vi.fn(),
     skillSave: vi.fn(),
@@ -82,6 +83,55 @@ function makeTarget(overrides: Partial<Target> = {}): Target {
 function makeSkill(overrides: Partial<Skill> = {}): Skill {
   return {
     ...mockSkill,
+    ...overrides,
+  };
+}
+
+function makeDiagnose(overrides: Record<string, unknown> = {}) {
+  return {
+    skill: "my-skill",
+    healthy: false,
+    status: "blocked",
+    summary: {
+      source_status: "missing",
+      binding_count: 0,
+      target_count: 0,
+      projection_count: 0,
+      failed_check_count: 1,
+      warning_check_count: 1,
+      drifted_path_count: 0,
+      recent_failed_op_count: 0,
+    },
+    checks: [
+      {
+        section: "source",
+        id: "source_directory_exists",
+        ok: false,
+        severity: "error",
+        message: "source skill directory is missing",
+        next_action: "restore the source skill, re-add it, or clean orphaned references",
+        details: { path: "/tmp/skills/my-skill" },
+      },
+      {
+        section: "git",
+        id: "source_drift",
+        ok: false,
+        severity: "warning",
+        message: "source has unsaved drift",
+        next_action: "run loom skill save my-skill or inspect loom skill diff",
+        details: { drifted_paths: ["SKILL.md"] },
+      },
+      {
+        section: "operations",
+        id: "recent_failed_ops",
+        ok: true,
+        severity: "ok",
+        message: "no recent failed operations for this skill",
+        next_action: null,
+        details: { operations: [] },
+      },
+    ],
+    related: {},
     ...overrides,
   };
 }
@@ -288,6 +338,42 @@ describe("SkillsPage — history tab", () => {
 
     await waitFor(() => {
       expect(api.skillHistory).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+describe("SkillsPage — diagnose tab", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    (api.skillHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      data: { skill: "my-skill", count: 0, events: [] },
+    });
+    (api.skillDiff as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (api.skillDiagnose as ReturnType<typeof vi.fn>).mockResolvedValue(makeDiagnose());
+  });
+
+  it("does not fetch diagnose data while Lifecycle remains active", async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(api.skillHistory).toHaveBeenCalledTimes(1);
+    });
+    expect(api.skillDiagnose).not.toHaveBeenCalled();
+  });
+
+  it("fetches diagnose data when clicked and renders blocked checks with next action", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnose" }));
+
+    await waitFor(() => {
+      expect(api.skillDiagnose).toHaveBeenCalledWith("my-skill", expect.any(AbortSignal));
+      expect(screen.getByText("blocked")).toBeInTheDocument();
+      expect(screen.getByText("source_directory_exists")).toBeInTheDocument();
+      expect(
+        screen.getByText(/restore the source skill, re-add it, or clean orphaned references/),
+      ).toBeInTheDocument();
     });
   });
 });
