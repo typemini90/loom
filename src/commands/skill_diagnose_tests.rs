@@ -414,3 +414,76 @@ fn skill_diagnose_reports_source_drift_git_read_errors() {
     assert!(drift["details"]["error"].as_str().is_some());
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn skill_diagnose_checks_projection_only_targets() {
+    let root = test_root();
+    write_skill(&root, "demo");
+    commit_all(&root);
+    let paths = RegistryStatePaths::from_root(&root);
+    paths.ensure_layout().expect("layout");
+    paths
+        .save_targets(&RegistryTargetsFile {
+            schema_version: REGISTRY_SCHEMA_VERSION,
+            targets: vec![],
+        })
+        .expect("targets");
+    paths
+        .save_bindings(&RegistryBindingsFile {
+            schema_version: REGISTRY_SCHEMA_VERSION,
+            bindings: vec![],
+        })
+        .expect("bindings");
+    paths
+        .save_rules(&RegistryRulesFile {
+            schema_version: REGISTRY_SCHEMA_VERSION,
+            rules: vec![],
+        })
+        .expect("rules");
+    paths
+        .save_projections(&RegistryProjectionsFile {
+            schema_version: REGISTRY_SCHEMA_VERSION,
+            projections: vec![RegistryProjectionInstance {
+                instance_id: "inst-orphan".to_string(),
+                skill_id: "demo".to_string(),
+                binding_id: None,
+                target_id: "deleted-target".to_string(),
+                materialized_path: root.join("deleted/demo").display().to_string(),
+                method: "copy".to_string(),
+                last_applied_rev: "HEAD".to_string(),
+                health: "orphaned".to_string(),
+                observed_drift: Some(false),
+                updated_at: Some(Utc::now()),
+            }],
+        })
+        .expect("projections");
+    paths
+        .save_checkpoint(&RegistryOpsCheckpoint {
+            schema_version: REGISTRY_SCHEMA_VERSION,
+            last_scanned_op_id: None,
+            last_acked_op_id: None,
+            updated_at: Utc::now(),
+        })
+        .expect("checkpoint");
+
+    let (payload, _) = app(&root)
+        .cmd_skill_diagnose(&SkillOnlyArgs {
+            skill: "demo".to_string(),
+        })
+        .expect("diagnose");
+    let target_check = payload["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == "target_path_exists:deleted-target")
+        .expect("projection-only target check");
+
+    assert_eq!(payload["status"], json!("blocked"));
+    assert_eq!(target_check["ok"], json!(false));
+    assert_eq!(target_check["severity"], json!("error"));
+    assert_eq!(
+        target_check["details"]["target_id"],
+        json!("deleted-target")
+    );
+    let _ = fs::remove_dir_all(root);
+}

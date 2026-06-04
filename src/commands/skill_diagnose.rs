@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -58,6 +59,9 @@ fn build_skill_diagnosis(
     add_git_checks(ctx, skill, source_exists, &mut checks);
 
     if let Some(snapshot) = snapshot {
+        let mut rule_target_ids = BTreeSet::new();
+        let mut projection_only_target_ids = BTreeSet::new();
+
         for rule in snapshot
             .rules
             .rules
@@ -79,6 +83,7 @@ fn build_skill_diagnosis(
                 json!({"binding_id": rule.binding_id}),
             ));
             add_target_checks(snapshot, &rule.target_id, &rule.method, &mut checks);
+            rule_target_ids.insert(rule.target_id.clone());
         }
 
         for projection in snapshot
@@ -89,6 +94,16 @@ fn build_skill_diagnosis(
         {
             projections.push(json!(projection));
             add_projection_checks(ctx, snapshot, projection, &mut checks);
+            if !rule_target_ids.contains(&projection.target_id)
+                && projection_only_target_ids.insert(projection.target_id.clone())
+            {
+                add_target_checks(
+                    snapshot,
+                    &projection.target_id,
+                    &projection.method,
+                    &mut checks,
+                );
+            }
         }
 
         for target in &snapshot.targets.targets {
