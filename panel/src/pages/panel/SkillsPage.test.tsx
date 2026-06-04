@@ -351,6 +351,11 @@ describe("SkillsPage — diagnose tab", () => {
     });
     (api.skillDiff as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
     (api.skillDiagnose as ReturnType<typeof vi.fn>).mockResolvedValue(makeDiagnose());
+    (api.skillSave as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      cmd: "skill.save",
+      request_id: "req-save",
+    });
   });
 
   it("does not fetch diagnose data while Lifecycle remains active", async () => {
@@ -374,6 +379,64 @@ describe("SkillsPage — diagnose tab", () => {
       expect(
         screen.getByText(/restore the source skill, re-add it, or clean orphaned references/),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("shows loading state while diagnose data is in-flight", () => {
+    (api.skillDiagnose as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnose" }));
+
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+  });
+
+  it("shows diagnose errors when the fetch rejects", async () => {
+    (api.skillDiagnose as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("diagnose unavailable"),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnose" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("diagnose unavailable")).toBeInTheDocument();
+    });
+  });
+
+  it("refetches diagnose data after lifecycle mutations while Diagnose is active", async () => {
+    (api.skillDiagnose as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(makeDiagnose({ status: "blocked" }))
+      .mockResolvedValueOnce(
+        makeDiagnose({
+          healthy: true,
+          status: "healthy",
+          summary: {
+            source_status: "present",
+            binding_count: 0,
+            target_count: 0,
+            projection_count: 0,
+            failed_check_count: 0,
+            warning_check_count: 0,
+            drifted_path_count: 0,
+            recent_failed_op_count: 0,
+          },
+          checks: [],
+        }),
+      );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnose" }));
+    await waitFor(() => {
+      expect(screen.getByText("blocked")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(api.skillSave).toHaveBeenCalledWith("my-skill");
+      expect(api.skillDiagnose).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("healthy")).toBeInTheDocument();
     });
   });
 });

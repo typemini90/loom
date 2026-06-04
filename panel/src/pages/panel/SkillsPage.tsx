@@ -331,6 +331,7 @@ function SkillDetail({
   const [diagnoseLoading, setDiagnoseLoading] = useState(false);
   const [diagnoseError, setDiagnoseError] = useState<string | null>(null);
   const [diagnose, setDiagnose] = useState<SkillDiagnosePayload | null>(null);
+  const [diagnoseRefreshKey, setDiagnoseRefreshKey] = useState(0);
 
   const targetObjs = skill.targets
     .map((tid) => targets.find((t) => t.id === tid))
@@ -380,10 +381,11 @@ function SkillDetail({
         }
       });
     return () => ctrl.abort();
-  }, [skill.name, tab]);
+  }, [skill.name, tab, diagnoseRefreshKey]);
 
   const onLifecycleMutation = () => {
     setHistoryRefreshKey((value) => value + 1);
+    setDiagnoseRefreshKey((value) => value + 1);
     onMutation();
   };
 
