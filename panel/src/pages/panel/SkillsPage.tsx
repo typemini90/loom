@@ -159,7 +159,7 @@ export function SkillsPage({
         ) : (
           <div className="two-col" style={{ height: "100%", gap: 0 }}>
             <div style={{ overflow: "auto", borderRight: "1px solid var(--line)" }}>
-              <table className="tbl">
+              <table className="tbl mobile-cards">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -178,15 +178,27 @@ export function SkillsPage({
                       className={sel?.id === s.id ? "selected" : ""}
                       onClick={() => onSelectSkill(s.id)}
                     >
-                      <td className="name">{s.name}</td>
-                      <td>
+                      <td className="name" data-label="Name">
+                        {s.name}
+                      </td>
+                      <td data-label="Source">
                         <span className={`chip ${s.sourceStatus}`}>{s.sourceStatus}</span>
                       </td>
-                      <td className="mono">{s.latestRev}</td>
-                      <td className="mono dim">{formatSkillTags(s)}</td>
-                      <td className="mono dim">{s.bindingCount}</td>
-                      <td className="mono">{s.projectionCount}</td>
-                      <td className="mono dim">{s.changed}</td>
+                      <td className="mono" data-label="Latest rev">
+                        {s.latestRev}
+                      </td>
+                      <td className="mono dim mobile-hide" data-label="Tags">
+                        {formatSkillTags(s)}
+                      </td>
+                      <td className="mono dim" data-label="Bindings">
+                        {s.bindingCount}
+                      </td>
+                      <td className="mono" data-label="Projections">
+                        {s.projectionCount}
+                      </td>
+                      <td className="mono dim mobile-hide" data-label="Changed">
+                        {s.changed}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

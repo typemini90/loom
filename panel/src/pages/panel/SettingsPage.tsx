@@ -125,12 +125,15 @@ export function SettingsPage({ live, mode, registryRoot }: SettingsPageProps) {
             {info.kind === "error" && (
               <div style={{ color: "var(--err)", fontSize: 12, marginBottom: 10 }}>{info.message}</div>
             )}
-            <table className="tbl" style={{ fontSize: 12 }}>
+            <table className="tbl mobile-cards" style={{ fontSize: 12 }}>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.label}>
-                    <td style={{ color: "var(--ink-2)", width: 160 }}>{r.label}</td>
+                    <td data-label="Setting" style={{ color: "var(--ink-2)", width: 160 }}>
+                      {r.label}
+                    </td>
                     <td
+                      data-label="Value"
                       className={r.mono ? "mono settings-value-cell" : "settings-value-cell"}
                       style={{ color: r.value ? "var(--ink-0)" : "var(--ink-3)" }}
                     >
