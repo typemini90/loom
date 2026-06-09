@@ -340,7 +340,13 @@ async fn v1_skills_returns_union_read_model() {
             status: "succeeded".to_string(),
             ack: false,
             payload: json!({}),
-            effects: json!({"imported": [{"skill": "observed-only"}]}),
+            effects: json!({
+                "imported": [{"skill": "observed-only", "target_id": "target-observed"}],
+                "skipped": [
+                    {"skill": "present-skill", "target_id": "target-1", "reason": "already-exists"},
+                    {"skill": "ignored-invalid", "target_id": "target-1", "reason": "invalid-skill-name"}
+                ]
+            }),
             last_error: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -380,6 +386,14 @@ async fn v1_skills_returns_union_read_model() {
         json!("abcdef1234567890")
     );
     assert_eq!(by_id("observed-only")["observed_imported"], json!(true));
+    assert_eq!(
+        by_id("observed-only")["observed_target_ids"],
+        json!(["target-observed"])
+    );
+    assert_eq!(
+        by_id("present-skill")["observed_target_ids"],
+        json!(["target-1"])
+    );
 
     cleanup_root(root);
 }

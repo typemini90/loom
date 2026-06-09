@@ -106,6 +106,7 @@ export interface SkillSummaryPayload {
   bindings_count?: number;
   projections_count?: number;
   target_ids?: string[];
+  observed_target_ids?: string[];
   release_tags?: string[];
   snapshot_tags?: string[];
   observed_imported?: boolean;

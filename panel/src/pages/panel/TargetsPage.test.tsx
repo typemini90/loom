@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { TargetsPage } from "./TargetsPage";
-import type { Ownership, Target } from "../../lib/types";
+import type { Ownership, Skill, Target } from "../../lib/types";
 import { api } from "../../lib/api/client";
 
 afterEach(() => {
@@ -17,6 +17,27 @@ function makeTarget(id: string, ownership: Ownership): Target {
     ownership,
     skills: 0,
     lastSync: "now",
+  };
+}
+
+function makeObservedSkill(name: string, targetId: string): Skill {
+  return {
+    id: `s-${name}`,
+    name,
+    description: null,
+    tag: "skill",
+    sourceStatus: "present",
+    observedImported: true,
+    sources: ["observed", "source"],
+    releaseTags: [],
+    snapshotTags: [],
+    latestRev: "—",
+    ruleCount: 0,
+    bindingCount: 0,
+    projectionCount: 0,
+    changed: "—",
+    targets: [],
+    observedTargetIds: [targetId],
   };
 }
 
@@ -86,5 +107,53 @@ describe("TargetsPage — ownership tier tooltip", () => {
       expect(importObserved).toHaveBeenCalledWith();
       expect(onMutation).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("shows observed target inventory separately from projections", () => {
+    vi.spyOn(api, "targetShow").mockResolvedValue({
+      ok: true,
+      data: {
+        target: {
+          target_id: "target-observed",
+          agent: "claude",
+          path: "/tmp/skills",
+          ownership: "observed",
+          capabilities: { symlink: false, copy: false, watch: true },
+        },
+        bindings: [],
+        projections: [],
+      },
+    });
+
+    render(
+      <TargetsPage
+        targets={[
+          {
+            ...makeTarget("target-observed", "observed"),
+            observedSkills: 2,
+            projectedSkills: 0,
+            skills: 2,
+          },
+        ]}
+        skills={[
+          makeObservedSkill("alpha", "target-observed"),
+          makeObservedSkill("beta", "target-observed"),
+        ]}
+        selectedTarget="target-observed"
+        onSelectTarget={() => {}}
+        onRemoveTarget={() => {}}
+        onMutation={() => {}}
+        readOnly={false}
+        mutationVersion={0}
+      />,
+    );
+
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("observed skills")).toBeInTheDocument();
+    expect(screen.getAllByText("0").length).toBeGreaterThan(0);
+    expect(screen.getByText("projected")).toBeInTheDocument();
+    expect(screen.getByText("Observed skills in this target")).toBeInTheDocument();
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+    expect(screen.getByText("beta")).toBeInTheDocument();
   });
 });

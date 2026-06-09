@@ -36,7 +36,10 @@ export interface Target {
   profile: string;
   path: string;
   ownership: Ownership;
+  /** Back-compat display count. Prefer `observedSkills` / `projectedSkills` for labels. */
   skills: number;
+  observedSkills?: number;
+  projectedSkills?: number;
   lastSync: string;
 }
 
@@ -63,6 +66,7 @@ export interface Skill {
   /** Relative time since the skill's newest projection was last updated. */
   changed: string;
   targets: string[];
+  observedTargetIds?: string[];
 }
 
 export interface Op {

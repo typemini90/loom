@@ -35,6 +35,9 @@ export function TargetsPage({
 }: TargetsPageProps) {
   const [addOpen, setAddOpen] = useState(false);
   const sel = targets.find((t) => t.id === selectedTarget) ?? null;
+  const observedSkillsForSelected = sel
+    ? skills.filter((skill) => skill.observedTargetIds?.includes(sel.id))
+    : [];
   const importObserved = useMutation();
   const observedTargets = targets.filter((t) => t.ownership === "observed");
   const showObservedImport = skills.length === 0 && observedTargets.length > 0;
@@ -136,6 +139,8 @@ export function TargetsPage({
             {targets.map((t) => {
               const isSel = selectedTarget === t.id;
               const inbound = skills.filter((s) => s.targets.includes(t.id)).length;
+              const observedCount = t.observedSkills ?? 0;
+              const projectedCount = t.projectedSkills ?? t.skills;
               return (
                 <div
                   key={t.id}
@@ -171,7 +176,10 @@ export function TargetsPage({
                     }}
                   >
                     <span>
-                      <b style={{ color: "var(--ink-0)" }}>{t.skills}</b> skills present
+                      <b style={{ color: "var(--ink-0)" }}>{observedCount}</b> observed skills
+                    </span>
+                    <span>
+                      <b style={{ color: "var(--ink-0)" }}>{projectedCount}</b> projected
                     </span>
                     <span>
                       <b style={{ color: "var(--ink-0)" }}>{inbound}</b> inbound bindings
@@ -198,6 +206,7 @@ export function TargetsPage({
               </span>
             </div>
             <div className="card-body">
+              <ObservedSkillList skills={observedSkillsForSelected} />
               <TargetDetail
                 target={sel}
                 readOnly={readOnly}
@@ -210,6 +219,42 @@ export function TargetsPage({
         )}
       </div>
     </>
+  );
+}
+
+function ObservedSkillList({ skills }: { skills: Skill[] }) {
+  const visibleSkills = skills.slice(0, 24);
+  const remaining = skills.length - visibleSkills.length;
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="section-title">Observed skills in this target</div>
+      {skills.length === 0 ? (
+        <div className="empty">No observed skill imports are linked to this target yet.</div>
+      ) : (
+        <>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
+            {visibleSkills.map((skill) => (
+              <span key={skill.id} className="badge">
+                {skill.name}
+              </span>
+            ))}
+          </div>
+          {remaining > 0 && (
+            <div className="hint" style={{ marginTop: 10 }}>
+              +{remaining} more observed skill{remaining === 1 ? "" : "s"}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

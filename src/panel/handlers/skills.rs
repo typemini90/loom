@@ -26,6 +26,7 @@ struct SkillReadRow {
     sources: BTreeSet<&'static str>,
     binding_ids: BTreeSet<String>,
     target_ids: BTreeSet<String>,
+    observed_target_ids: BTreeSet<String>,
     projection_count: usize,
     latest_rev: Option<String>,
     latest_updated_at: Option<String>,
@@ -264,8 +265,36 @@ fn add_observed_import_rows(
                         let row = skill_row(rows, skill_id);
                         row.sources.insert("observed");
                         row.observed_imported = true;
+                        if let Some(target_id) =
+                            item.get("target_id").and_then(serde_json::Value::as_str)
+                        {
+                            row.observed_target_ids.insert(target_id.to_string());
+                        }
                     }
                 }
+            }
+        }
+        if let Some(items) = op
+            .effects
+            .get("skipped")
+            .and_then(serde_json::Value::as_array)
+        {
+            for item in items {
+                let reason = item.get("reason").and_then(serde_json::Value::as_str);
+                if reason != Some("already-exists") && reason != Some("duplicate-observed-skill") {
+                    continue;
+                }
+                let Some(skill_id) = item.get("skill").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                let Some(target_id) = item.get("target_id").and_then(serde_json::Value::as_str)
+                else {
+                    continue;
+                };
+                let row = skill_row(rows, skill_id);
+                row.sources.insert("observed");
+                row.observed_imported = true;
+                row.observed_target_ids.insert(target_id.to_string());
             }
         }
     }
@@ -320,6 +349,7 @@ fn skill_row_to_json(row: SkillReadRow) -> serde_json::Value {
         "bindings_count": row.binding_ids.len(),
         "projections_count": row.projection_count,
         "target_ids": row.target_ids.into_iter().collect::<Vec<_>>(),
+        "observed_target_ids": row.observed_target_ids.into_iter().collect::<Vec<_>>(),
         "release_tags": row.release_tags,
         "snapshot_tags": row.snapshot_tags,
         "observed_imported": row.observed_imported,

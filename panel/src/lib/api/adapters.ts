@@ -66,16 +66,24 @@ export function buildAdapterIndex(
   return { targetsById, projectionsBySkill, projectionsByTarget };
 }
 
-export function adaptTarget(t: RegistryTarget, index: AdapterIndex): Target {
+export function adaptTarget(
+  t: RegistryTarget,
+  index: AdapterIndex,
+  observedSkillCounts: Map<string, number> = new Map(),
+): Target {
   const projections = index.projectionsByTarget.get(t.target_id) ?? [];
   const skillsOnTarget = new Set(projections.map((p) => p.skill_id));
+  const projectedSkills = skillsOnTarget.size;
+  const observedSkills = observedSkillCounts.get(t.target_id) ?? 0;
   return {
     id: t.target_id,
     agent: toAgentSlug(t.agent),
     profile: profileFromPath(t.path),
     path: shortPath(t.path),
     ownership: toOwnership(t.ownership),
-    skills: skillsOnTarget.size,
+    skills: observedSkills > 0 ? observedSkills : projectedSkills,
+    observedSkills,
+    projectedSkills,
     lastSync: t.created_at ? relativeTime(t.created_at) : "—",
   };
 }
@@ -119,6 +127,7 @@ export function adaptSkill(
     projectionCount: projForSkill.length,
     changed,
     targets: targetIds,
+    observedTargetIds: [],
   };
 }
 
@@ -128,6 +137,7 @@ export function adaptSkillSummary(summary: SkillSummaryPayload): Skill {
   const snapshotTags = summary.snapshot_tags ?? [];
   const tag = releaseTags[0] ?? (snapshotTags.length > 0 ? "snapshot" : inferTag(name));
   const targetIds = summary.target_ids ?? [];
+  const observedTargetIds = summary.observed_target_ids ?? [];
   const latestRev = summary.latest_rev ? summary.latest_rev.slice(0, 8) : "—";
   const changed = summary.latest_updated_at ? relativeTime(summary.latest_updated_at) : "—";
   const bindingCount = summary.bindings_count ?? 0;
@@ -149,6 +159,7 @@ export function adaptSkillSummary(summary: SkillSummaryPayload): Skill {
     projectionCount,
     changed,
     targets: targetIds,
+    observedTargetIds,
   };
 }
 
