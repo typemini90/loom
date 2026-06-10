@@ -113,6 +113,7 @@ fn build_skill_read_model(
     let registry_available = snapshot.is_some();
     if let Some(snapshot) = snapshot.as_ref() {
         add_registry_skill_rows(snapshot, &mut rows);
+        add_observed_target_inventory_rows(snapshot, &mut rows, &mut warnings);
         add_observed_import_rows(snapshot, &mut rows);
     } else {
         warnings.push(format!(
@@ -298,6 +299,99 @@ fn add_observed_import_rows(
             }
         }
     }
+}
+
+fn add_observed_target_inventory_rows(
+    snapshot: &RegistrySnapshot,
+    rows: &mut BTreeMap<String, SkillReadRow>,
+    warnings: &mut Vec<String>,
+) {
+    for target in &snapshot.targets.targets {
+        if target.ownership != "observed" {
+            continue;
+        }
+        let target_path = PathBuf::from(&target.path);
+        if !target_path.exists() {
+            warnings.push(format!(
+                "observed target {} missing at {}",
+                target.target_id,
+                target_path.display()
+            ));
+            continue;
+        }
+        if !target_path.is_dir() {
+            warnings.push(format!(
+                "observed target {} is not a directory: {}",
+                target.target_id,
+                target_path.display()
+            ));
+            continue;
+        }
+
+        let entries = match fs::read_dir(&target_path) {
+            Ok(entries) => entries,
+            Err(err) => {
+                warnings.push(format!(
+                    "failed to read observed target {} at {}: {err}",
+                    target.target_id,
+                    target_path.display()
+                ));
+                continue;
+            }
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => {
+                    warnings.push(format!(
+                        "failed to read observed target entry under {}: {err}",
+                        target_path.display()
+                    ));
+                    continue;
+                }
+            };
+            let source_path = entry.path();
+            let source = match observed_inventory_source(&source_path) {
+                Some(source) => source,
+                None => continue,
+            };
+            if !panel_skill_entrypoint_exists(&source) {
+                continue;
+            }
+            let Some(skill_id) = entry.file_name().to_str().map(str::to_string) else {
+                warnings.push(format!(
+                    "observed target {} contains non-utf8 skill entry {}",
+                    target.target_id,
+                    source_path.display()
+                ));
+                continue;
+            };
+            let row = skill_row(rows, &skill_id);
+            row.sources.insert("observed");
+            row.observed_imported = true;
+            row.observed_target_ids.insert(target.target_id.clone());
+        }
+    }
+}
+
+fn observed_inventory_source(source_path: &Path) -> Option<PathBuf> {
+    let metadata = fs::symlink_metadata(source_path).ok()?;
+    if metadata.is_dir() {
+        return Some(source_path.to_path_buf());
+    }
+    if !metadata.file_type().is_symlink() {
+        return None;
+    }
+    let target_metadata = fs::metadata(source_path).ok()?;
+    if !target_metadata.is_dir() {
+        return None;
+    }
+    fs::canonicalize(source_path).ok()
+}
+
+fn panel_skill_entrypoint_exists(path: &Path) -> bool {
+    path.join("SKILL.md").is_file() || path.join("skill.md").is_file()
 }
 
 fn add_skill_tags(

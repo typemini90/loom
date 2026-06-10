@@ -156,10 +156,12 @@ pub async fn run_panel(ctx: AppContext, port: u16) -> Result<()> {
         .route("/api/v1/workspace/init", post(v1_workspace_init))
         .route("/api/v1/workspace/doctor", get(v1_workspace_doctor))
         .route("/api/v1/workspace/remote", post(remote_set))
+        .route("/api/v1/registry/status", get(registry_status))
         .route(
             "/api/v1/targets",
             get(v1_registry_targets).post(registry_target_add),
         )
+        .route("/api/v1/targets/{target_id}", get(registry_target_show))
         .route(
             "/api/v1/targets/{target_id}/remove",
             post(registry_target_remove),
@@ -168,6 +170,7 @@ pub async fn run_panel(ctx: AppContext, port: u16) -> Result<()> {
             "/api/v1/bindings",
             get(v1_registry_bindings).post(registry_binding_add),
         )
+        .route("/api/v1/bindings/{binding_id}", get(registry_binding_show))
         .route(
             "/api/v1/bindings/{binding_id}/remove",
             post(registry_binding_remove),
@@ -190,6 +193,11 @@ pub async fn run_panel(ctx: AppContext, port: u16) -> Result<()> {
             "/api/v1/skills/{skill_name}/diagnose",
             get(v1_skill_diagnose),
         )
+        .route(
+            "/api/v1/skills/{skill_name}/history",
+            get(registry_skill_history),
+        )
+        .route("/api/v1/skills/{skill_name}/diff", get(registry_skill_diff))
         .route(
             "/api/v1/skills/{skill_name}/trash",
             post(registry_skill_trash_add),
@@ -215,6 +223,7 @@ pub async fn run_panel(ctx: AppContext, port: u16) -> Result<()> {
         .route("/api/v1/projections/capture", post(registry_capture))
         .route("/api/v1/orphans/clean", post(registry_orphan_clean))
         .route("/api/v1/ops", get(v1_registry_ops))
+        .route("/api/v1/ops/diagnose", get(registry_ops_diagnose))
         .route("/api/v1/ops/retry", post(ops_retry))
         .route("/api/v1/ops/purge", post(ops_purge))
         .route("/api/v1/ops/history/repair", post(ops_history_repair))

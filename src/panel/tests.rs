@@ -14,6 +14,7 @@ mod assets;
 mod handlers;
 mod panel_import_observed;
 mod security;
+mod skill_read_model;
 
 fn make_test_state() -> (std::path::PathBuf, PanelState) {
     let root = std::env::temp_dir().join(format!("loom-panel-test-{}", Uuid::new_v4()));

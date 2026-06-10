@@ -10,6 +10,7 @@ const OWNERSHIP_TOOLTIP: Record<Ownership, string> = {
   managed: "managed: Loom owns this directory; writes projections.",
   observed: "observed: Loom only reads; use for self-edited dirs.",
   external: "external: hands-off; listed only.",
+  unknown: "unknown: backend returned an unrecognized ownership value.",
 };
 
 interface TargetsPageProps {

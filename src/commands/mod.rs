@@ -5,6 +5,8 @@ mod file_ops;
 mod fs_probe;
 mod helpers;
 mod history_cmds;
+#[cfg(test)]
+mod observed_tests;
 mod projections;
 mod skill_cmds;
 mod skill_diagnose;

@@ -18,12 +18,12 @@ function toAgentSlug(value: string): AgentSlug {
 
 function toOwnership(value: string): Ownership {
   if (value === "managed" || value === "observed" || value === "external") return value;
-  return "external";
+  return "unknown";
 }
 
 function toMethod(value: string): ProjectionMethod {
   if (value === "symlink" || value === "copy" || value === "materialize") return value;
-  return "symlink";
+  return "unknown";
 }
 
 function profileFromPath(path: string): string {
@@ -179,7 +179,7 @@ export function adaptBinding(b: RegistryBinding, rules: RegistryRule[]): Binding
     skill: rule?.skill_id ?? "—",
     target: b.default_target_id,
     matcher: `${b.workspace_matcher.kind}:${b.workspace_matcher.value}`,
-    method: rule ? toMethod(rule.method) : "symlink",
+    method: rule ? toMethod(rule.method) : "unknown",
     policy: b.policy_profile === "manual" ? "manual" : "auto",
   };
 }

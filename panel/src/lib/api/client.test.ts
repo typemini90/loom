@@ -17,9 +17,9 @@ describe("api.registryStatus", () => {
     await expect(api.registryStatus()).rejects.toEqual(
       expect.objectContaining<ApiError>({
         name: "ApiError",
-        path: "/api/registry/status",
+        path: "/api/v1/registry/status",
         status: 502,
-        message: "GET /api/registry/status returned 502",
+        message: "GET /api/v1/registry/status returned 502",
       }),
     );
   });
@@ -121,5 +121,31 @@ describe("api v1 routes", () => {
     await api.skills();
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/v1/skills", { signal: undefined });
+  });
+
+  it("uses v1 endpoints for registry read routes", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+    } as unknown as Response);
+
+    await api.registryStatus();
+    await api.opsHistoryDiagnose();
+    await api.bindingShow("binding 1");
+    await api.targetShow("target 1");
+    await api.skillHistory("demo skill");
+    await api.skillDiff("demo skill", "old", "new");
+
+    const paths = fetchSpy.mock.calls.map((call) => call[0]);
+    expect(paths).toEqual([
+      "/api/v1/registry/status",
+      "/api/v1/ops/diagnose",
+      "/api/v1/bindings/binding%201",
+      "/api/v1/targets/target%201",
+      "/api/v1/skills/demo%20skill/history",
+      "/api/v1/skills/demo%20skill/diff?rev_a=old&rev_b=new",
+    ]);
   });
 });

@@ -119,13 +119,15 @@ function useLayout(mode: VizMode, skills: Skill[], targets: Target[]): LayoutRes
 function ownershipColor(o: Ownership): string {
   if (o === "managed") return "#d97736";
   if (o === "observed") return "#6fb78a";
+  if (o === "external") return "#8a8271";
   return "#8a8271";
 }
 
 function methodColor(m: ProjectionMethod): string {
   if (m === "symlink") return "#6fb78a";
   if (m === "copy") return "#e6b450";
-  return "#c79ee0";
+  if (m === "materialize") return "#c79ee0";
+  return "#8a8271";
 }
 
 interface ProjectionRecord {

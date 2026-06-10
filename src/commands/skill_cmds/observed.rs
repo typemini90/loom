@@ -98,6 +98,14 @@ impl App {
                     None => continue,
                 };
                 if !has_skill_entrypoint(&copy_source) {
+                    push_missing_skill_entrypoint_skip(
+                        &mut skipped,
+                        &target.target_id,
+                        &source_path,
+                        &copy_source,
+                        source_kind,
+                        resolved_source.as_deref(),
+                    );
                     continue;
                 }
 
@@ -418,6 +426,14 @@ impl App {
                     None => continue,
                 };
                 if !has_skill_entrypoint(&copy_source) {
+                    push_missing_skill_entrypoint_skip(
+                        &mut skipped,
+                        &target.target_id,
+                        &source_path,
+                        &copy_source,
+                        source_kind,
+                        resolved_source.as_deref(),
+                    );
                     continue;
                 }
 
@@ -681,4 +697,28 @@ impl App {
             meta,
         ))
     }
+}
+
+fn push_missing_skill_entrypoint_skip(
+    skipped: &mut Vec<serde_json::Value>,
+    target_id: &str,
+    source_path: &Path,
+    copy_source: &Path,
+    source_kind: &str,
+    resolved_source: Option<&str>,
+) {
+    let mut item = json!({
+        "target_id": target_id,
+        "source": source_path.display().to_string(),
+        "copy_source": copy_source.display().to_string(),
+        "source_kind": source_kind,
+        "reason": "missing-skill-entrypoint",
+    });
+    if let Some(name) = source_path.file_name() {
+        item["name"] = json!(name.to_string_lossy());
+    }
+    if let Some(resolved_source) = resolved_source {
+        item["resolved_source"] = json!(resolved_source);
+    }
+    skipped.push(item);
 }
