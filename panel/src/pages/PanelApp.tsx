@@ -112,7 +112,7 @@ export function PanelApp() {
       const method: ProjectionMethod =
         p.method === "symlink" || p.method === "copy" || p.method === "materialize"
           ? p.method
-          : "symlink";
+          : "unknown";
       return { skillId: `s-${p.skill_id}`, targetId: p.target_id, method };
     });
   }, [live.projections]);

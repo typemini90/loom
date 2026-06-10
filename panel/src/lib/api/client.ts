@@ -106,6 +106,7 @@ export interface SkillSummaryPayload {
   bindings_count?: number;
   projections_count?: number;
   target_ids?: string[];
+  observed_target_ids?: string[];
   release_tags?: string[];
   snapshot_tags?: string[];
   observed_imported?: boolean;
@@ -448,11 +449,11 @@ export const api = {
   workspaceStatus: (signal?: AbortSignal) =>
     getJsonData<WorkspaceStatusPayload>("/api/v1/workspace/status", signal),
   skills: (signal?: AbortSignal) => getJsonData<SkillsPayload>("/api/v1/skills", signal),
-  registryStatus: (signal?: AbortSignal) => getJson<RegistryPayload>("/api/registry/status", signal),
+  registryStatus: (signal?: AbortSignal) => getJson<RegistryPayload>("/api/v1/registry/status", signal),
   workspaceDoctor: (signal?: AbortSignal) =>
     getJsonData<DoctorPayload>("/api/v1/workspace/doctor", signal),
   opsHistoryDiagnose: (signal?: AbortSignal) =>
-    getJson<OpsHistoryDiagnosePayload>("/api/registry/ops/diagnose", signal),
+    getJson<OpsHistoryDiagnosePayload>("/api/v1/ops/diagnose", signal),
   ops: (options?: { limit?: number; offset?: number }, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (typeof options?.limit === "number") params.set("limit", String(options.limit));
@@ -461,9 +462,9 @@ export const api = {
     return getJson<OpsPayload>(`/api/v1/ops${qs}`, signal);
   },
   bindingShow: (id: string, signal?: AbortSignal) =>
-    getJson<BindingShowPayload>(`/api/registry/bindings/${encodeURIComponent(id)}`, signal),
+    getJson<BindingShowPayload>(`/api/v1/bindings/${encodeURIComponent(id)}`, signal),
   targetShow: (id: string, signal?: AbortSignal) =>
-    getJson<TargetShowPayload>(`/api/registry/targets/${encodeURIComponent(id)}`, signal),
+    getJson<TargetShowPayload>(`/api/v1/targets/${encodeURIComponent(id)}`, signal),
   remoteStatus: async (signal?: AbortSignal) =>
     parseRemoteStatusResponse(
       "/api/v1/sync/status",
@@ -513,7 +514,7 @@ export const api = {
 
   skillHistory: (name: string, signal?: AbortSignal) =>
     getJson<SkillHistoryPayload>(
-      `/api/registry/skills/${encodeURIComponent(name)}/history`,
+      `/api/v1/skills/${encodeURIComponent(name)}/history`,
       signal,
     ),
 
@@ -529,7 +530,7 @@ export const api = {
     if (revB) params.set("rev_b", revB);
     const qs = params.size > 0 ? `?${params.toString()}` : "";
     return getJson<SkillDiffPayload>(
-      `/api/registry/skills/${encodeURIComponent(name)}/diff${qs}`,
+      `/api/v1/skills/${encodeURIComponent(name)}/diff${qs}`,
       signal,
     );
   },

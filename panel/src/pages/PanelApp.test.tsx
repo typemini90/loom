@@ -63,7 +63,7 @@ function installFetchMock(failingPath: string, failingResponse: Response) {
             meta: { warnings: [] },
           }),
         );
-      case "/api/registry/status":
+      case "/api/v1/registry/status":
         return Promise.resolve(
           url === failingPath
             ? failingResponse
@@ -114,9 +114,9 @@ describe("PanelApp status failure UI", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows registry error state and offline banner when /api/registry/status fails", async () => {
+  it("shows registry error state and offline banner when /api/v1/registry/status fails", async () => {
     installFetchMock(
-      "/api/registry/status",
+      "/api/v1/registry/status",
       {
         ok: false,
         status: 503,
@@ -133,7 +133,7 @@ describe("PanelApp status failure UI", () => {
       expect(screen.getByText(/registry error/i)).toBeTruthy();
     });
 
-    expect(screen.getByText(/GET \/api\/registry\/status returned 503/i)).toBeTruthy();
+    expect(screen.getByText(/GET \/api\/v1\/registry\/status returned 503/i)).toBeTruthy();
   });
 
   it("shows registry error state when /api/v1/sync/status returns a structured backend failure", async () => {

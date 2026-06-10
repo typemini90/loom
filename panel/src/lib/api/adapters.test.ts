@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adaptRegistryOperation } from "./adapters";
+import { adaptBinding, adaptPendingOp, adaptRegistryOperation, adaptTarget, buildAdapterIndex } from "./adapters";
 import type { RegistryOperationRecord } from "./client";
 
 function operation(overrides: Partial<RegistryOperationRecord> = {}): RegistryOperationRecord {
@@ -26,5 +26,60 @@ describe("adaptRegistryOperation", () => {
         operation({ status: "succeeded", last_error: { code: "IO_ERROR", message: "failed" } }),
       ).status,
     ).toBe("err");
+  });
+});
+
+describe("api adapters enum handling", () => {
+  it("surfaces unknown target ownership instead of coercing it to external", () => {
+    const index = buildAdapterIndex([], []);
+    const target = adaptTarget(
+      {
+        target_id: "target-1",
+        agent: "claude",
+        path: "/tmp/skills",
+        ownership: "delegated",
+        capabilities: { symlink: false, copy: false, watch: false },
+      },
+      index,
+    );
+
+    expect(target.ownership).toBe("unknown");
+  });
+
+  it("surfaces unknown projection methods instead of coercing them to symlink", () => {
+    const binding = adaptBinding(
+      {
+        binding_id: "binding-1",
+        agent: "claude",
+        profile_id: "default",
+        workspace_matcher: { kind: "path_prefix", value: "/repo" },
+        default_target_id: "target-1",
+        policy_profile: "manual",
+        active: true,
+      },
+      [
+        {
+          binding_id: "binding-1",
+          skill_id: "demo",
+          target_id: "target-1",
+          method: "teleport",
+          watch_policy: "manual",
+        },
+      ],
+    );
+
+    expect(binding.method).toBe("unknown");
+    expect(
+      adaptPendingOp(
+        {
+          request_id: "req-1",
+          command: "project",
+          created_at: "2026-05-29T00:00:00Z",
+          details: { method: "teleport" },
+        },
+        0,
+      ).method,
+    ).toBe("unknown");
+    expect(adaptRegistryOperation(operation({ method: "teleport" })).method).toBe("unknown");
   });
 });

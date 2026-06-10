@@ -41,9 +41,52 @@ const MUTATION_COMMANDS: &[&str] = &[
     "sync.replay",
 ];
 
+const V1_REGISTRY_READ_ROUTES: &[&str] = &[
+    "/api/v1/registry/status",
+    "/api/v1/ops/diagnose",
+    "/api/v1/bindings/{binding_id}",
+    "/api/v1/targets/{target_id}",
+    "/api/v1/skills/{skill_name}/history",
+    "/api/v1/skills/{skill_name}/diff",
+];
+
+const LEGACY_REGISTRY_READ_ROUTES: &[&str] = &[
+    "/api/registry/status",
+    "/api/registry/ops/diagnose",
+    "/api/registry/bindings/{binding_id}",
+    "/api/registry/targets/{target_id}",
+    "/api/registry/skills/{skill_name}/history",
+    "/api/registry/skills/{skill_name}/diff",
+];
+
 #[test]
 fn mutation_commands_count_is_twenty_two() {
     assert_eq!(MUTATION_COMMANDS.len(), 22);
+}
+
+#[test]
+fn panel_registry_reads_prefer_v1_routes_with_legacy_compatibility() {
+    let client_source = include_str!("../../../panel/src/lib/api/client.ts");
+    let panel_routes = include_str!("../mod.rs");
+
+    for route in V1_REGISTRY_READ_ROUTES {
+        assert!(
+            panel_routes.contains(route),
+            "missing v1 registry read route {route}"
+        );
+    }
+
+    for route in LEGACY_REGISTRY_READ_ROUTES {
+        assert!(
+            panel_routes.contains(route),
+            "missing legacy compatibility route {route}"
+        );
+    }
+
+    assert!(
+        !client_source.contains("/api/registry/"),
+        "frontend registry reads must use /api/v1 aliases"
+    );
 }
 
 #[test]

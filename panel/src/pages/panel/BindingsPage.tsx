@@ -305,11 +305,12 @@ function BindingDetail({
   const t = targets.find((x) => x.id === binding.target);
   const rules = state.kind === "ready" ? state.payload.rules ?? [] : [];
   const projections = state.kind === "ready" ? state.payload.projections ?? [] : [];
-  const canProject = !readOnly && binding.skill !== "—" && Boolean(t);
+  const canProject = !readOnly && binding.skill !== "—" && Boolean(t) && binding.method !== "unknown";
   const actionBusy = project.busy || remove.busy;
 
   const runProject = () => {
-    if (!canProject) return;
+    if (!canProject || binding.method === "unknown") return;
+    const method = binding.method;
     project.run(
       `project ${binding.skill}`,
       () =>
@@ -317,7 +318,7 @@ function BindingDetail({
           skill: binding.skill,
           binding: binding.id,
           target: binding.target,
-          method: binding.method,
+          method,
         }),
       onMutation,
     );

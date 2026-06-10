@@ -151,7 +151,11 @@ fn skill_import_observed_imports_real_skill_dirs_and_commits_them() {
     assert_eq!(repeat_env["data"]["count"], Value::from(0));
     assert_eq!(
         skipped_reasons(&repeat_env),
-        vec!["already-exists", "already-exists"]
+        vec![
+            "already-exists",
+            "already-exists",
+            "missing-skill-entrypoint"
+        ]
     );
     assert_eq!(repeat_env["data"]["noop"], Value::Bool(true));
 }

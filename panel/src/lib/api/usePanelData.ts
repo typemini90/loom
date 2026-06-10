@@ -172,11 +172,17 @@ export function usePanelData(): PanelLiveData {
       const registryBindings = registryData.bindings ?? [];
 
       const index = buildAdapterIndex(registryTargets, projections);
-      const targets = registryTargets.map((t) => adaptTarget(t, index));
       const skillItems = skillsPayload.skills ?? [];
       const skills = skillItems.map((item) =>
         typeof item === "string" ? adaptSkill(item, index, rules) : adaptSkillSummary(item),
       );
+      const observedSkillCounts = new Map<string, number>();
+      for (const skill of skills) {
+        for (const targetId of skill.observedTargetIds ?? []) {
+          observedSkillCounts.set(targetId, (observedSkillCounts.get(targetId) ?? 0) + 1);
+        }
+      }
+      const targets = registryTargets.map((t) => adaptTarget(t, index, observedSkillCounts));
       const bindings = registryBindings.map((b) => adaptBinding(b, rules));
 
       const pendingOps: Op[] = (pending.ops ?? []).map(adaptPendingOp);

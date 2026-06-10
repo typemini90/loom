@@ -25,8 +25,8 @@ export type AgentSlug = KnownAgent | (string & {});
 // Back-compat alias for older call sites that still import AgentKind.
 export type AgentKind = AgentSlug;
 
-export type Ownership = "managed" | "observed" | "external";
-export type ProjectionMethod = "symlink" | "copy" | "materialize";
+export type Ownership = "managed" | "observed" | "external" | "unknown";
+export type ProjectionMethod = "symlink" | "copy" | "materialize" | "unknown";
 export type OpStatus = "ok" | "pending" | "err";
 export type SkillSourceStatus = "present" | "missing" | "non-compliant";
 
@@ -36,7 +36,10 @@ export interface Target {
   profile: string;
   path: string;
   ownership: Ownership;
+  /** Back-compat display count. Prefer `observedSkills` / `projectedSkills` for labels. */
   skills: number;
+  observedSkills?: number;
+  projectedSkills?: number;
   lastSync: string;
 }
 
@@ -63,6 +66,7 @@ export interface Skill {
   /** Relative time since the skill's newest projection was last updated. */
   changed: string;
   targets: string[];
+  observedTargetIds?: string[];
 }
 
 export interface Op {
