@@ -297,10 +297,14 @@ function mutationAction(
 export function selectProjectionLinks(projections: readonly RegistryProjection[]): ProjectionLink[] {
   return projections.map((projection) => {
     const method = methodField(projection.method);
+    const methodValue =
+      method.state === "available" && (method.label === "symlink" || method.label === "copy" || method.label === "materialize")
+        ? method.label
+        : "unknown";
     return {
       skillId: `s-${projection.skill_id}`,
       targetId: projection.target_id,
-      method: method.label === UNKNOWN ? "unknown" : (method.label as ProjectionMethod),
+      method: methodValue,
     };
   });
 }

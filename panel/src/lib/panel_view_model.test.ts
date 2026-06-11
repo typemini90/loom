@@ -101,6 +101,23 @@ describe("panel view-model selectors", () => {
     expect(vm.updatedAt).toMatchObject({ state: "unavailable", label: "unavailable" });
   });
 
+  it("does not fabricate graph methods when projection method is missing", () => {
+    const projection = {
+      instance_id: "projection-1",
+      skill_id: "typed-api-client",
+      target_id: "target-1",
+      materialized_path: "/tmp/target/skill",
+      last_applied_rev: "abcdef123",
+      health: "healthy",
+    } as RegistryProjection;
+
+    expect(selectProjectionViewModel(projection).method).toMatchObject({
+      state: "unavailable",
+      label: "unavailable",
+    });
+    expect(selectProjectionLinks([projection])[0].method).toBe("unknown");
+  });
+
   it("covers shell counts and does not invent missing backend counts", () => {
     const vm = selectPanelViewModel(liveData({ counts: {}, queuedWriteCount: 2 }), {
       page: "overview",
