@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import type { PanelPageKey, TweakState, VizMode } from "../lib/types";
 import { usePanelData } from "../lib/api/usePanelData";
 import { api } from "../lib/api/client";
 import { ControlRoomShell } from "../components/panel/ControlRoomShell";
-import { TweakPanel } from "../components/panel/TweakPanel";
 import type { ToastViewModel } from "../components/panel/Toasts";
 import { OverviewPage } from "./panel/OverviewPage";
 import { SkillsPage } from "./panel/SkillsPage";
@@ -17,6 +16,10 @@ import { DoctorPage } from "./panel/DoctorPage";
 import { FirstRunPage } from "./panel/FirstRunPage";
 import { ProjectionsPage } from "./panel/ProjectionsPage";
 import { selectPanelViewModel } from "../lib/panel_view_model";
+
+const TweakPanel = lazy(() =>
+  import("../components/panel/TweakPanel").then((module) => ({ default: module.TweakPanel })),
+);
 
 const DEFAULT_TWEAKS: TweakState = {
   vizMode: "loom",
@@ -345,7 +348,9 @@ export function PanelApp() {
     >
       {view}
       {tweakVisible && (
-        <TweakPanel state={tweaks} onChange={patchTweaks} onDismiss={() => setTweakVisible(false)} />
+        <Suspense fallback={null}>
+          <TweakPanel state={tweaks} onChange={patchTweaks} onDismiss={() => setTweakVisible(false)} />
+        </Suspense>
       )}
     </ControlRoomShell>
   );
