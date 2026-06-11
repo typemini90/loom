@@ -22,6 +22,42 @@ function makeTarget(overrides: Partial<Target> = {}): Target {
   };
 }
 
+function renderOverview(overrides: Partial<React.ComponentProps<typeof OverviewPage>> = {}) {
+  return render(
+    <OverviewPage
+      skills={[]}
+      targets={[makeTarget()]}
+      bindings={[]}
+      ops={[]}
+      projections={[]}
+      registryProjections={[]}
+      remoteState="CLEAN"
+      queuedWriteCount={0}
+      vizMode="loom"
+      setVizMode={() => {}}
+      selectedSkill={null}
+      selectedTarget={null}
+      onSelectSkill={() => {}}
+      onSelectTarget={() => {}}
+      registryRoot={null}
+      onMutation={() => {}}
+      onNewTarget={() => {}}
+      onNewBinding={() => {}}
+      onOpenSkills={() => {}}
+      onViewActivity={() => {}}
+      onOpenSync={() => {}}
+      readOnly={false}
+      {...overrides}
+    />,
+  );
+}
+
+function controlCard(label: string): HTMLElement {
+  const card = screen.getByText(label).closest(".overview-control-card");
+  expect(card).toBeTruthy();
+  return card as HTMLElement;
+}
+
 describe("OverviewPage observed import", () => {
   it("renders API-backed control-room summary cards", () => {
     const binding: Binding = {
@@ -63,36 +99,34 @@ describe("OverviewPage observed import", () => {
       },
     ];
 
-    render(
-      <OverviewPage
-        skills={[]}
-        targets={[
-          makeTarget({ id: "target-managed", ownership: "managed" }),
-          makeTarget({ id: "target-observed", ownership: "observed" }),
-          makeTarget({ id: "target-external", ownership: "external" }),
-        ]}
-        bindings={[binding]}
-        ops={[op]}
-        projections={[]}
-        registryProjections={registryProjections}
-        remoteState="PENDING_PUSH"
-        queuedWriteCount={3}
-        vizMode="loom"
-        setVizMode={() => {}}
-        selectedSkill={null}
-        selectedTarget={null}
-        onSelectSkill={() => {}}
-        onSelectTarget={() => {}}
-        registryRoot="/tmp/loom-registry"
-        onMutation={() => {}}
-        onNewTarget={() => {}}
-        onNewBinding={() => {}}
-        onOpenSkills={() => {}}
-        onViewActivity={() => {}}
-        onOpenSync={() => {}}
-        readOnly={false}
-      />,
-    );
+    renderOverview({
+      skills: [],
+      targets: [
+        makeTarget({ id: "target-managed", ownership: "managed" }),
+        makeTarget({ id: "target-observed", ownership: "observed" }),
+        makeTarget({ id: "target-external", ownership: "external" }),
+      ],
+      bindings: [binding],
+      ops: [op],
+      projections: [],
+      registryProjections,
+      remoteState: "PENDING_PUSH",
+      queuedWriteCount: 3,
+      vizMode: "loom",
+      setVizMode: () => {},
+      selectedSkill: null,
+      selectedTarget: null,
+      onSelectSkill: () => {},
+      onSelectTarget: () => {},
+      registryRoot: "/tmp/loom-registry",
+      onMutation: () => {},
+      onNewTarget: () => {},
+      onNewBinding: () => {},
+      onOpenSkills: () => {},
+      onViewActivity: () => {},
+      onOpenSync: () => {},
+      readOnly: false,
+    });
 
     const summary = screen.getByText("Registry root").closest(".overview-control-grid");
     expect(summary).toBeTruthy();
@@ -114,32 +148,30 @@ describe("OverviewPage observed import", () => {
     });
     const onMutation = vi.fn();
 
-    render(
-      <OverviewPage
-        skills={[]}
-        targets={[makeTarget()]}
-        bindings={[]}
-        ops={[]}
-        projections={[]}
-        registryProjections={[]}
-        remoteState="CLEAN"
-        queuedWriteCount={0}
-        vizMode="loom"
-        setVizMode={() => {}}
-        selectedSkill={null}
-        selectedTarget={null}
-        onSelectSkill={() => {}}
-        onSelectTarget={() => {}}
-        registryRoot={null}
-        onMutation={onMutation}
-        onNewTarget={() => {}}
-        onNewBinding={() => {}}
-        onOpenSkills={() => {}}
-        onViewActivity={() => {}}
-        onOpenSync={() => {}}
-        readOnly={false}
-      />,
-    );
+    renderOverview({
+      skills: [],
+      targets: [makeTarget()],
+      bindings: [],
+      ops: [],
+      projections: [],
+      registryProjections: [],
+      remoteState: "CLEAN",
+      queuedWriteCount: 0,
+      vizMode: "loom",
+      setVizMode: () => {},
+      selectedSkill: null,
+      selectedTarget: null,
+      onSelectSkill: () => {},
+      onSelectTarget: () => {},
+      registryRoot: null,
+      onMutation,
+      onNewTarget: () => {},
+      onNewBinding: () => {},
+      onOpenSkills: () => {},
+      onViewActivity: () => {},
+      onOpenSync: () => {},
+      readOnly: false,
+    });
 
     expect(screen.getByText(/Import creates managed skills/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Import observed skills/ }));
@@ -148,5 +180,45 @@ describe("OverviewPage observed import", () => {
       expect(importObserved).toHaveBeenCalledWith();
       expect(onMutation).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("marks divergent sync and non-healthy projections as attention states", () => {
+    renderOverview({
+      remoteState: "DIVERGED",
+      registryProjections: [
+        {
+          instance_id: "projection-missing",
+          skill_id: "skill.writer",
+          target_id: "target-observed",
+          materialized_path: "/tmp/target/skill.writer",
+          method: "copy",
+          last_applied_rev: "abc1234",
+          health: "missing",
+        },
+      ],
+    });
+
+    expect(controlCard("Sync state")).toHaveAttribute("data-tone", "err");
+    expect(controlCard("Projection health")).toHaveAttribute("data-tone", "warn");
+  });
+
+  it("marks conflicted sync and projection conflicts as errors", () => {
+    renderOverview({
+      remoteState: "CONFLICTED",
+      registryProjections: [
+        {
+          instance_id: "projection-conflict",
+          skill_id: "skill.writer",
+          target_id: "target-observed",
+          materialized_path: "/tmp/target/skill.writer",
+          method: "copy",
+          last_applied_rev: "abc1234",
+          health: "conflict",
+        },
+      ],
+    });
+
+    expect(controlCard("Sync state")).toHaveAttribute("data-tone", "err");
+    expect(controlCard("Projection health")).toHaveAttribute("data-tone", "err");
   });
 });

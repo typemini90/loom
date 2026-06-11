@@ -44,6 +44,22 @@ function isDisplayValue(value: string): boolean {
   return Boolean(value && value !== "\u2014");
 }
 
+function syncTone(remoteState: string | null, queuedWriteCount: number): "ok" | "warn" | "err" {
+  const state = (remoteState ?? "").toUpperCase();
+  if (state === "DIVERGED" || state === "CONFLICTED" || state.includes("ERROR") || state.includes("FAILED")) {
+    return "err";
+  }
+  if (queuedWriteCount > 0 || remoteState === null || state === "PENDING_PUSH" || state === "LOCAL_ONLY") {
+    return "warn";
+  }
+  return "ok";
+}
+
+function projectionHealthTone(healthCounts: Record<string, number>): "ok" | "warn" | "err" {
+  if ((healthCounts.conflict ?? 0) > 0) return "err";
+  return Object.entries(healthCounts).some(([health, count]) => count > 0 && health !== "healthy") ? "warn" : "ok";
+}
+
 export function OverviewPage({
   skills,
   targets,
@@ -223,7 +239,7 @@ export function OverviewPage({
             label="Sync state"
             value={syncStateLabel}
             meta={queuedWriteCount > 0 ? formatQueuedWrites(queuedWriteCount) : "queue clean"}
-            tone={queuedWriteCount > 0 || remoteState === null ? "warn" : "ok"}
+            tone={syncTone(remoteState, queuedWriteCount)}
           />
           <OverviewControlCard
             label="Skills"
@@ -245,7 +261,7 @@ export function OverviewPage({
             label="Projection health"
             value={totalProjections}
             meta={projectionHealthMeta}
-            tone={healthCounts.unavailable || healthCounts.drifted || healthCounts.orphaned ? "warn" : "ok"}
+            tone={projectionHealthTone(healthCounts)}
           />
           <OverviewControlCard
             label="Last operation"
