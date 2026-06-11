@@ -5,21 +5,21 @@ import { api } from "../lib/api/client";
 import { ControlRoomShell } from "../components/panel/ControlRoomShell";
 import type { ToastViewModel } from "../components/panel/Toasts";
 import { OverviewPage } from "./panel/OverviewPage";
-import { TargetsPage } from "./panel/TargetsPage";
-import { BindingsPage } from "./panel/BindingsPage";
 import { HistoryPage } from "./panel/HistoryPage";
 import { OpsPage } from "./panel/OpsPage";
 import { SettingsPage } from "./panel/SettingsPage";
 import { SyncPage } from "./panel/SyncPage";
 import { DoctorPage } from "./panel/DoctorPage";
 import { FirstRunPage } from "./panel/FirstRunPage";
-import { ProjectionsPage } from "./panel/ProjectionsPage";
 import { selectPanelViewModel } from "../lib/panel_view_model";
 
 const TweakPanel = lazy(() =>
   import("../components/panel/TweakPanel").then((module) => ({ default: module.TweakPanel })),
 );
 const SkillsPage = lazy(() => import("./panel/SkillsPage").then((module) => ({ default: module.SkillsPage })));
+const ControlPlanePage = lazy(() =>
+  import("./panel/ControlPlanePage").then((module) => ({ default: module.ControlPlanePage })),
+);
 
 const DEFAULT_TWEAKS: TweakState = {
   vizMode: "loom",
@@ -204,6 +204,24 @@ export function PanelApp() {
     setSelectedTarget(id);
     setSelectedSkill(null);
   };
+  const controlPlane = (initialTab: "targets" | "bindings" | "projections") => (
+    <Suspense fallback={null}>
+      <ControlPlanePage
+        initialTab={initialTab}
+        skills={skills}
+        targets={targets}
+        bindings={bindings}
+        projections={live.projections}
+        selectedTarget={selectedTarget}
+        onSelectTarget={toggleTarget}
+        onRemoveTarget={onRemoveTarget}
+        onMutation={onMutation}
+        onNavigate={setPage}
+        readOnly={readOnly}
+        mutationVersion={mutationVersion}
+      />
+    </Suspense>
+  );
 
   let view: React.ReactNode;
   if (live.mode === "first-run") {
@@ -255,41 +273,13 @@ export function PanelApp() {
         );
         break;
       case "targets":
-        view = (
-          <TargetsPage
-            targets={targets}
-            skills={skills}
-            selectedTarget={selectedTarget}
-            onSelectTarget={toggleTarget}
-            onRemoveTarget={onRemoveTarget}
-            onMutation={onMutation}
-            readOnly={readOnly}
-            mutationVersion={mutationVersion}
-          />
-        );
+        view = controlPlane("targets");
         break;
       case "bindings":
-        view = (
-          <BindingsPage
-            bindings={bindings}
-            targets={targets}
-            projections={live.projections}
-            onMutation={onMutation}
-            readOnly={readOnly}
-            mutationVersion={mutationVersion}
-          />
-        );
+        view = controlPlane("bindings");
         break;
       case "projections":
-        view = (
-          <ProjectionsPage
-            projections={live.projections}
-            targets={targets}
-            bindings={bindings}
-            readOnly={readOnly}
-            onMutation={onMutation}
-          />
-        );
+        view = controlPlane("projections");
         break;
       case "ops":
         view = <OpsPage ops={ops} onMutation={onMutation} readOnly={readOnly} />;
