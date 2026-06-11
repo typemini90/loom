@@ -154,17 +154,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function unwrapReadData<T>(path: string, body: unknown): T {
   if (
-    isRecord(body) &&
-    body.ok === true &&
-    typeof body.cmd === "string" &&
-    typeof body.request_id === "string"
+    !isRecord(body) ||
+    body.ok !== true ||
+    typeof body.cmd !== "string" ||
+    typeof body.request_id !== "string"
   ) {
-    if (!("data" in body)) {
-      throw new ApiError(path, 200, `GET ${path} envelope is missing data`);
-    }
-    return body.data as T;
+    throw new ApiError(path, 200, `GET ${path} returned non-envelope payload`);
   }
-  return body as T;
+  if (!("data" in body)) {
+    throw new ApiError(path, 200, `GET ${path} envelope is missing data`);
+  }
+  return body.data as T;
 }
 
 function parseRemoteStatusResponse(path: string, body: unknown): RemoteStatusResponse {
@@ -444,8 +444,8 @@ export interface DoctorPayload {
 }
 
 export const api = {
-  health: (signal?: AbortSignal) => getJson<HealthPayload>("/api/health", signal),
-  info: (signal?: AbortSignal) => getJsonData<InfoPayload>("/api/info", signal),
+  health: (signal?: AbortSignal) => getJsonData<HealthPayload>("/api/v1/health", signal),
+  info: (signal?: AbortSignal) => getJsonData<InfoPayload>("/api/v1/workspace/info", signal),
   workspaceStatus: (signal?: AbortSignal) =>
     getJsonData<WorkspaceStatusPayload>("/api/v1/workspace/status", signal),
   skills: (signal?: AbortSignal) => getJsonData<SkillsPayload>("/api/v1/skills", signal),
@@ -473,7 +473,7 @@ export const api = {
         await getJson<unknown>("/api/v1/sync/status", signal),
       ),
     ),
-  pending: (signal?: AbortSignal) => getJsonData<PendingPayload>("/api/pending", signal),
+  pending: (signal?: AbortSignal) => getJsonData<PendingPayload>("/api/v1/ops/pending", signal),
 
   opsRetry: () => postJson("/api/v1/ops/retry", {}),
   opsPurge: () => postJson("/api/v1/ops/purge", {}),
