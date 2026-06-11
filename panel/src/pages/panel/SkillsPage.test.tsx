@@ -545,6 +545,10 @@ describe("SkillsPage — trash UI", () => {
     );
   }
 
+  function openTrashStateTab() {
+    fireEvent.click(screen.getByRole("button", { name: "Trash state" }));
+  }
+
   it("lists trash entries in the Trash view", async () => {
     renderPage();
     openTrashView();
@@ -561,6 +565,7 @@ describe("SkillsPage — trash UI", () => {
     const onSelectSkill = vi.fn();
     renderPage({ onMutation, onSelectSkill });
 
+    openTrashStateTab();
     fireEvent.click(screen.getByRole("button", { name: "Trash my-skill" }));
     fireEvent.click(screen.getByRole("button", { name: "Move to trash" }));
 
@@ -574,6 +579,7 @@ describe("SkillsPage — trash UI", () => {
   it("keeps an open trash confirmation read-only safe", async () => {
     const view = renderPage();
 
+    openTrashStateTab();
     fireEvent.click(screen.getByRole("button", { name: "Trash my-skill" }));
     expect(screen.getByRole("button", { name: "Move to trash" })).not.toBeDisabled();
 
@@ -641,6 +647,7 @@ describe("SkillsPage — trash UI", () => {
 
   it("disables trash mutations in read-only mode", async () => {
     renderPage({ readOnly: true });
+    openTrashStateTab();
     expect(screen.getByRole("button", { name: "Trash my-skill" })).toBeDisabled();
 
     openTrashView();
