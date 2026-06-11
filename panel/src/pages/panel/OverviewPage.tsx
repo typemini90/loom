@@ -1,17 +1,22 @@
-import type { Op, ProjectionLink, Skill, Target, VizMode } from "../../lib/types";
+import type { RegistryProjection } from "../../generated/RegistryProjection";
+import type { Binding, Op, ProjectionLink, Skill, Target, VizMode } from "../../lib/types";
 import { OpRow } from "../../components/panel/OpRow";
 import { ProjectionGraph } from "../../components/panel/ProjectionGraph";
 import { MutationBanner } from "../../components/panel/MutationBanner";
 import { PlusIcon, RefreshIcon, ShieldIcon, TargetIcon } from "../../components/icons/nav_icons";
-import { COUNT_TERMS, formatReplayableWrites, summarizeOps } from "../../lib/count_labels";
+import { COUNT_TERMS, formatQueuedWrites, formatReplayableWrites, summarizeOps } from "../../lib/count_labels";
 import { api } from "../../lib/api/client";
 import { useMutation } from "../../lib/useMutation";
 
 interface OverviewPageProps {
   skills: Skill[];
   targets: Target[];
+  bindings: Binding[];
   ops: Op[];
   projections: ProjectionLink[];
+  registryProjections: RegistryProjection[];
+  remoteState: string | null;
+  queuedWriteCount: number;
   vizMode: VizMode;
   setVizMode: (m: VizMode) => void;
   selectedSkill: string | null;
@@ -28,11 +33,26 @@ interface OverviewPageProps {
   readOnly: boolean;
 }
 
+function formatCountList(counts: Record<string, number>, order: string[], emptyLabel: string): string {
+  const labels = order
+    .filter((key) => (counts[key] ?? 0) > 0)
+    .map((key) => `${key} ${counts[key]}`);
+  return labels.length > 0 ? labels.join(" · ") : emptyLabel;
+}
+
+function isDisplayValue(value: string): boolean {
+  return Boolean(value && value !== "\u2014");
+}
+
 export function OverviewPage({
   skills,
   targets,
+  bindings,
   ops,
   projections,
+  registryProjections,
+  remoteState,
+  queuedWriteCount,
   vizMode,
   setVizMode,
   selectedSkill,
@@ -52,21 +72,47 @@ export function OverviewPage({
   const selTarget = targets.find((t) => t.id === selectedTarget);
   const importObserved = useMutation();
   const opCounts = summarizeOps(ops);
-  const totalProjections = skills.reduce((a, s) => a + s.targets.length, 0);
-  const totalRules = skills.reduce((a, s) => a + s.ruleCount, 0);
+  const totalProjections = registryProjections.length;
+  const totalBindings = bindings.length;
   const observedSkillCount = skills.filter((s) => s.observedImported || s.sources?.includes("observed")).length;
   const observedTargetCount = targets.filter((t) => t.ownership === "observed").length;
   const uniqueAgents = new Set(targets.map((t) => t.agent)).size;
   const uniqueProfiles = new Set(targets.map((t) => `${t.agent}/${t.profile}`)).size;
-  const methodCounts = projections.reduce<Record<string, number>>((acc, p) => {
-    acc[p.method] = (acc[p.method] ?? 0) + 1;
+  const targetOwnershipCounts = targets.reduce<Record<string, number>>((acc, target) => {
+    const ownership = target.ownership || "unknown";
+    acc[ownership] = (acc[ownership] ?? 0) + 1;
+    return acc;
+  }, {});
+  const methodCounts = registryProjections.reduce<Record<string, number>>((acc, projection) => {
+    const method =
+      projection.method === "symlink" || projection.method === "copy" || projection.method === "materialize"
+        ? projection.method
+        : "unknown";
+    acc[method] = (acc[method] ?? 0) + 1;
+    return acc;
+  }, {});
+  const healthCounts = registryProjections.reduce<Record<string, number>>((acc, projection) => {
+    const health = projection.health || "unavailable";
+    acc[health] = (acc[health] ?? 0) + 1;
     return acc;
   }, {});
   const rootDisplay = registryRoot ? registryRoot.replace(/^\/Users\/[^/]+/, "~") : "not connected";
+  const syncStateLabel = remoteState ? remoteState.toLowerCase().replace("_", " ") : "unavailable";
   const writeGuardTone = readOnly ? "warn" : "ok";
   const canAddBinding = !readOnly && targets.length > 0;
   const addBindingTitle = readOnly ? "registry offline" : !canAddBinding ? "add a target first" : undefined;
   const canImportObserved = skills.length === 0 && observedTargetCount > 0;
+  const lastOperation = ops[0] ?? null;
+  const targetOwnershipMeta = formatCountList(targetOwnershipCounts, ["managed", "observed", "external", "unknown"], "no targets");
+  const projectionMethodMeta = formatCountList(
+    methodCounts,
+    ["symlink", "copy", "materialize", "unknown"],
+    "no projections",
+  );
+  const projectionHealthMeta = formatCountList(healthCounts, Object.keys(healthCounts).sort(), "health unavailable");
+  const lastOperationMeta = lastOperation
+    ? [lastOperation.skill, lastOperation.target, lastOperation.method].filter(isDisplayValue).join(" / ") || lastOperation.id
+    : "no operations yet";
   const runImportObserved = () => {
     importObserved.run("import observed skills", () => api.skillImportObserved(), onMutation);
   };
@@ -79,8 +125,8 @@ export function OverviewPage({
       ? `${skills.length} skill${skills.length === 1 ? "" : "s"} in registry · ${observedSkillCount} imported from observed targets.`
       : `${skills.length} tracked skill${skills.length === 1 ? "" : "s"}.`;
   const skillKpiMeta =
-    totalRules > 0
-      ? `${totalRules} binding rule${totalRules === 1 ? "" : "s"}`
+    totalBindings > 0
+      ? `${totalBindings} binding${totalBindings === 1 ? "" : "s"}`
       : observedSkillCount > 0
       ? "imported · no bindings"
       : skills.length > 0
@@ -106,8 +152,8 @@ export function OverviewPage({
     },
     {
       label: "Add a binding",
-      detail: totalRules === 0 ? "No routing rule maps a skill to a target." : `${totalRules} binding rule${totalRules === 1 ? "" : "s"}.`,
-      done: totalRules > 0,
+      detail: totalBindings === 0 ? "No binding maps a skill to a target." : `${totalBindings} binding${totalBindings === 1 ? "" : "s"}.`,
+      done: totalBindings > 0,
       action: "Add binding",
       onAction: onNewBinding,
       disabled: readOnly || targets.length === 0,
@@ -119,8 +165,8 @@ export function OverviewPage({
       done: totalProjections > 0,
       action: "Replay / sync",
       onAction: onOpenSync,
-      disabled: readOnly || totalRules === 0,
-      title: totalRules === 0 ? "add a binding first" : undefined,
+      disabled: readOnly || totalBindings === 0,
+      title: totalBindings === 0 ? "add a binding first" : undefined,
     },
     {
       label: "Clear activity",
@@ -139,10 +185,10 @@ export function OverviewPage({
     : skills.length === 0
       ? { label: "Open Skills", onClick: onOpenSkills }
       : targets.length === 0
-        ? { label: "Add target", onClick: onNewTarget }
-        : totalRules === 0
-          ? { label: "Add binding", onClick: onNewBinding }
-          : { label: "Replay / sync", onClick: onOpenSync };
+      ? { label: "Add target", onClick: onNewTarget }
+      : totalBindings === 0
+      ? { label: "Add binding", onClick: onNewBinding }
+      : { label: "Replay / sync", onClick: onOpenSync };
 
   return (
     <>
@@ -166,6 +212,49 @@ export function OverviewPage({
         </div>
       </div>
       <div className="page-body">
+        <div className="overview-control-grid">
+          <OverviewControlCard
+            label="Registry root"
+            value={rootDisplay}
+            meta={registryRoot ? "workspace registry" : "root unavailable"}
+            mono
+          />
+          <OverviewControlCard
+            label="Sync state"
+            value={syncStateLabel}
+            meta={queuedWriteCount > 0 ? formatQueuedWrites(queuedWriteCount) : "queue clean"}
+            tone={queuedWriteCount > 0 || remoteState === null ? "warn" : "ok"}
+          />
+          <OverviewControlCard
+            label="Skills"
+            value={skills.length}
+            meta={observedSkillCount > 0 ? `${observedSkillCount} observed import${observedSkillCount === 1 ? "" : "s"}` : skillKpiMeta}
+          />
+          <OverviewControlCard label="Targets by ownership" value={targets.length} meta={targetOwnershipMeta} />
+          <OverviewControlCard
+            label="Bindings"
+            value={totalBindings}
+            meta={totalBindings > 0 ? "routing rows from registry status" : "no bindings"}
+          />
+          <OverviewControlCard
+            label="Projection methods"
+            value={totalProjections}
+            meta={projectionMethodMeta}
+          />
+          <OverviewControlCard
+            label="Projection health"
+            value={totalProjections}
+            meta={projectionHealthMeta}
+            tone={healthCounts.unavailable || healthCounts.drifted || healthCounts.orphaned ? "warn" : "ok"}
+          />
+          <OverviewControlCard
+            label="Last operation"
+            value={lastOperation ? lastOperation.kind : "none"}
+            meta={lastOperation ? `${lastOperation.status} · ${lastOperationMeta}` : lastOperationMeta}
+            tone={lastOperation?.status === "err" ? "err" : opCounts.actionNeeded > 0 ? "warn" : "ok"}
+          />
+        </div>
+
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-head">
             <h3>Next steps</h3>
@@ -400,6 +489,24 @@ function Kpi({ label, value, meta }: KpiProps) {
       <div className="label">{label}</div>
       <div className="value">{value}</div>
       <div className="meta">{meta}</div>
+    </div>
+  );
+}
+
+interface OverviewControlCardProps {
+  label: string;
+  value: React.ReactNode;
+  meta: React.ReactNode;
+  tone?: "ok" | "warn" | "err";
+  mono?: boolean;
+}
+
+function OverviewControlCard({ label, value, meta, tone = "ok", mono = false }: OverviewControlCardProps) {
+  return (
+    <div className="overview-control-card" data-tone={tone}>
+      <div className="overview-control-label">{label}</div>
+      <div className={`overview-control-value${mono ? " mono" : ""}`}>{value}</div>
+      <div className="overview-control-meta">{meta}</div>
     </div>
   );
 }

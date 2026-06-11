@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { RegistryProjection } from "../../generated/RegistryProjection";
 import { api } from "../../lib/api/client";
-import type { Target } from "../../lib/types";
+import type { Binding, Op, Target } from "../../lib/types";
 import { OverviewPage } from "./OverviewPage";
 
 afterEach(() => {
@@ -22,6 +23,89 @@ function makeTarget(overrides: Partial<Target> = {}): Target {
 }
 
 describe("OverviewPage observed import", () => {
+  it("renders API-backed control-room summary cards", () => {
+    const binding: Binding = {
+      id: "binding-1",
+      skill: "skill.writer",
+      target: "target-managed",
+      matcher: "path_prefix:/repo",
+      method: "copy",
+      policy: "auto",
+    };
+    const op: Op = {
+      id: "op-1",
+      status: "err",
+      kind: "sync.push",
+      skill: "skill.writer",
+      target: "target-managed",
+      method: "copy",
+      time: "now",
+      reason: "push rejected",
+    };
+    const registryProjections: RegistryProjection[] = [
+      {
+        instance_id: "projection-1",
+        skill_id: "skill.writer",
+        target_id: "target-managed",
+        materialized_path: "/tmp/target/skill.writer",
+        method: "copy",
+        last_applied_rev: "abc1234",
+        health: "healthy",
+      },
+      {
+        instance_id: "projection-2",
+        skill_id: "skill.writer",
+        target_id: "target-observed",
+        materialized_path: "/tmp/target/skill.reader",
+        method: "symlink",
+        last_applied_rev: "def5678",
+        health: "drifted",
+      },
+    ];
+
+    render(
+      <OverviewPage
+        skills={[]}
+        targets={[
+          makeTarget({ id: "target-managed", ownership: "managed" }),
+          makeTarget({ id: "target-observed", ownership: "observed" }),
+          makeTarget({ id: "target-external", ownership: "external" }),
+        ]}
+        bindings={[binding]}
+        ops={[op]}
+        projections={[]}
+        registryProjections={registryProjections}
+        remoteState="PENDING_PUSH"
+        queuedWriteCount={3}
+        vizMode="loom"
+        setVizMode={() => {}}
+        selectedSkill={null}
+        selectedTarget={null}
+        onSelectSkill={() => {}}
+        onSelectTarget={() => {}}
+        registryRoot="/tmp/loom-registry"
+        onMutation={() => {}}
+        onNewTarget={() => {}}
+        onNewBinding={() => {}}
+        onOpenSkills={() => {}}
+        onViewActivity={() => {}}
+        onOpenSync={() => {}}
+        readOnly={false}
+      />,
+    );
+
+    const summary = screen.getByText("Registry root").closest(".overview-control-grid");
+    expect(summary).toBeTruthy();
+    expect(within(summary as HTMLElement).getByText("/tmp/loom-registry")).toBeInTheDocument();
+    expect(screen.getByText("pending push")).toBeInTheDocument();
+    expect(screen.getByText("3 queued writes")).toBeInTheDocument();
+    expect(screen.getByText("managed 1 · observed 1 · external 1")).toBeInTheDocument();
+    expect(screen.getByText("symlink 1 · copy 1")).toBeInTheDocument();
+    expect(screen.getByText("drifted 1 · healthy 1")).toBeInTheDocument();
+    expect(screen.getByText("sync.push")).toBeInTheDocument();
+    expect(screen.getByText(/err · skill\.writer \/ target-managed \/ copy/)).toBeInTheDocument();
+  });
+
   it("imports observed targets from the first managed-skill step", async () => {
     const importObserved = vi.spyOn(api, "skillImportObserved").mockResolvedValue({
       ok: true,
@@ -34,8 +118,12 @@ describe("OverviewPage observed import", () => {
       <OverviewPage
         skills={[]}
         targets={[makeTarget()]}
+        bindings={[]}
         ops={[]}
         projections={[]}
+        registryProjections={[]}
+        remoteState="CLEAN"
+        queuedWriteCount={0}
         vizMode="loom"
         setVizMode={() => {}}
         selectedSkill={null}
