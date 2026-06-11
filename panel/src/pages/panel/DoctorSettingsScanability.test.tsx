@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, expect, test } from "vitest";
+import { afterAll, beforeEach, expect, test, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { api, type DoctorPayload } from "../../lib/api/client";
 import { DoctorPage } from "./DoctorPage";
@@ -62,7 +62,8 @@ test("DoctorPage renders human labels before internal check IDs", async () => {
   api.workspaceDoctor = async () => payload;
 
   try {
-    const { container } = render(<DoctorPage apiReachable={true} mode="live" refreshKey="tick-1" />);
+    const navigate = vi.fn();
+    const { container } = render(<DoctorPage apiReachable={true} mode="live" refreshKey="tick-1" onNavigate={navigate} />);
 
     await screen.findByText("Git integrity");
     expect(screen.getByText("Target path")).toBeTruthy();
@@ -71,6 +72,9 @@ test("DoctorPage renders human labels before internal check IDs", async () => {
 
     const rendered = container.textContent ?? "";
     expect(rendered.indexOf("Target path")).toBeLessThan(rendered.indexOf("target_path_exists:target_claude_claude_project_a"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Targets" }));
+    expect(navigate).toHaveBeenCalledWith("targets");
   } finally {
     api.workspaceDoctor = originalDoctor;
   }
@@ -96,6 +100,9 @@ test("SettingsPage wraps long paths and exposes copy buttons", async () => {
     const { container } = render(<SettingsPage live={true} mode="live" registryRoot="/tmp/loom-registry-with-a-long-path" />);
 
     await screen.findByText("/tmp/home/.claude/projects/example-with-a-long-name/skills");
+    expect(screen.getByText("Operational metadata")).toBeInTheDocument();
+    expect(screen.getByText("Local preferences")).toBeInTheDocument();
+    expect(screen.getByText("Reduced motion")).toBeInTheDocument();
     expect(container.querySelector(".setting-path-text")).toBeTruthy();
     expect(container.querySelector(".setting-copy-btn")).toBeTruthy();
 
