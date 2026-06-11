@@ -82,7 +82,6 @@ function ActivityGroup({
             aria-current={active ? "page" : undefined}
           >
             <Icon />
-            <span className="activity-label">{entry.label}</span>
             {entry.count != null && <span className="activity-count">{entry.countLabel ?? entry.count}</span>}
           </button>
         );

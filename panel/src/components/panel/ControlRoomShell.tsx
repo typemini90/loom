@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { PanelViewModel } from "../../lib/panel_view_model";
 import type { PanelPageKey } from "../../lib/types";
 import { ActivityBar } from "./ActivityBar";
-import { CommandPalette } from "./CommandPalette";
 import { StatusBar } from "./StatusBar";
-import { Toasts, type ToastViewModel } from "./Toasts";
+import type { ToastViewModel } from "./Toasts";
+
+const CommandPalette = lazy(() =>
+  import("./CommandPalette").then((module) => ({ default: module.CommandPalette })),
+);
+const Toasts = lazy(() => import("./Toasts").then((module) => ({ default: module.Toasts })));
 
 interface ControlRoomShellProps {
   page: PanelPageKey;
@@ -87,16 +91,24 @@ export function ControlRoomShell({
         onToggleTweaks={onToggleTweaks}
         onReplayQueued={onReplayQueued}
       />
-      <CommandPalette
-        open={paletteOpen}
-        viewModel={viewModel}
-        onClose={() => setPaletteOpen(false)}
-        onNavigate={navigate}
-        onSelectSkill={selectSkill}
-        onSelectTarget={selectTarget}
-        onReplayQueued={onReplayQueued}
-      />
-      <Toasts toasts={toasts} onDismiss={onDismissToast} />
+      {paletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            open={paletteOpen}
+            viewModel={viewModel}
+            onClose={() => setPaletteOpen(false)}
+            onNavigate={navigate}
+            onSelectSkill={selectSkill}
+            onSelectTarget={selectTarget}
+            onReplayQueued={onReplayQueued}
+          />
+        </Suspense>
+      )}
+      {toasts.length > 0 && (
+        <Suspense fallback={null}>
+          <Toasts toasts={toasts} onDismiss={onDismissToast} />
+        </Suspense>
+      )}
     </div>
   );
 }
