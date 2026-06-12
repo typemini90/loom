@@ -122,6 +122,60 @@ function classForOp(op: Op) {
   return "pending";
 }
 
+const HEATMAP_WEEKS = 26;
+const HEATMAP_DAYS = HEATMAP_WEEKS * 7;
+const DAY_MS = 86_400_000;
+
+type SkillMetric = { skill: Skill; ops: number; edges: number; targets: number };
+
+function opTimestamp(op: Op): number | null {
+  const value = op.updatedAt ?? op.createdAt;
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function heatmapWindow(now = Date.now()) {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(today);
+  start.setDate(today.getDate() - today.getDay() - (HEATMAP_WEEKS - 1) * 7);
+  return { start: start.getTime(), end: start.getTime() + HEATMAP_DAYS * DAY_MS };
+}
+
+function heatmapLabels(start: number) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(start + Math.round((index * (HEATMAP_WEEKS - 1)) / 5) * 7 * DAY_MS);
+    return `${date.getMonth() + 1}月`;
+  });
+}
+
+function opSkillKeys(op: Op) {
+  return op.skill
+    .split(",")
+    .map((part) => part.trim().replace(/@\S+$/, ""))
+    .filter(Boolean);
+}
+
+function buildSkillMetrics(skills: Skill[], ops: Op[]): SkillMetric[] {
+  const knownSkills = new Set(skills.map((skill) => skill.name));
+  const opCounts = new Map<string, number>();
+  for (const op of ops) {
+    if (opTimestamp(op) === null) continue;
+    for (const name of opSkillKeys(op)) {
+      if (knownSkills.has(name)) opCounts.set(name, (opCounts.get(name) ?? 0) + 1);
+    }
+  }
+  return skills
+    .map((skill) => ({
+      skill,
+      ops: opCounts.get(skill.name) ?? 0,
+      edges: skill.projectionCount + skill.bindingCount,
+      targets: skill.targets.length + (skill.observedTargetIds?.length ?? 0),
+    }))
+    .sort((a, b) => b.ops - a.ops || b.edges - a.edges || b.targets - a.targets || a.skill.name.localeCompare(b.skill.name));
+}
+
 export function SkillMPanel() {
   const live = usePanelData();
   const [view, setView] = useState<SkillMPage>(initialView);
@@ -261,6 +315,11 @@ function Overview({ live, counts, go }: { live: ReturnType<typeof usePanelData>;
   const health = tally(live.projections.map((projection) => projection.health));
   const failed = counts.failedOps;
   const root = registryLabel(live.registryRoot);
+  const topSkills = useMemo(() => buildSkillMetrics(live.skills, live.ops).slice(0, 6), [live.skills, live.ops]);
+  const maxSkillOps = Math.max(0, ...topSkills.map((item) => item.ops));
+  const maxSkillEdges = Math.max(0, ...topSkills.map((item) => item.edges));
+  const skillBarBase = maxSkillOps > 0 ? maxSkillOps : maxSkillEdges;
+  const skillBarValue = (item: SkillMetric) => (maxSkillOps > 0 ? item.ops : item.edges);
   return (
     <div className="view view-dash">
       <header className="dash-hero">
@@ -294,18 +353,19 @@ function Overview({ live, counts, go }: { live: ReturnType<typeof usePanelData>;
       ) : null}
       <div className="dash-grid">
         <section className="panel">
-          <div className="panel-head"><h3><Icon d="bolt" />用量活跃度</h3><span className="panel-hint">ops / pending · 近 26 周</span></div>
-          <Heatmap ops={live.ops} queued={live.queuedWriteCount} />
+          <div className="panel-head"><h3><Icon d="bolt" />用量活跃度</h3><span className="panel-hint">ops.created_at / updated_at · 近 26 周</span></div>
+          <Heatmap ops={live.ops} />
         </section>
         <section className="panel">
-          <div className="panel-head"><h3><Icon d="lib" />Top Skills</h3><button className="link-btn" onClick={() => go("skills")}>查看 {"->"}</button></div>
+          <div className="panel-head"><h3><Icon d="lib" />Skill 真实统计</h3><button className="link-btn" onClick={() => go("skills")}>查看 {"->"}</button></div>
           <div className="ov-topskills">
-            {live.skills.slice(0, 6).map((skill, index) => (
-              <button className="ovts-row" key={skill.name} onClick={() => go("skills")}>
+            {live.skills.length > 0 && maxSkillOps === 0 && <div className="ovts-note">当前没有 skill usage ops；条形只按真实 registry edges 显示。</div>}
+            {topSkills.map((item, index) => (
+              <button className="ovts-row" key={item.skill.name} onClick={() => go("skills")}>
                 <span className="ovts-rank">{index + 1}</span>
-                <span className="ovts-name">{skill.name}</span>
-                <span className="ovts-bar"><i style={{ width: `${Math.max(4, Math.min(100, (skill.projectionCount + skill.bindingCount + 1) * 10))}%`, background: "var(--grad)" }} /></span>
-                <span className="ovts-n">{skill.projectionCount} edges</span>
+                <span className="ovts-name">{item.skill.name}</span>
+                <span className="ovts-bar"><i style={{ width: `${skillBarBase > 0 ? (skillBarValue(item) / skillBarBase) * 100 : 0}%`, background: maxSkillOps > 0 ? "var(--grad)" : "color-mix(in oklch,var(--acc3) 60%,var(--bg2))" }} /></span>
+                <span className="ovts-n">{item.ops} ops · {item.edges} edges</span>
               </button>
             ))}
             {live.skills.length === 0 && <div className="panel-empty">No skills from live registry yet.</div>}
@@ -336,21 +396,37 @@ function Overview({ live, counts, go }: { live: ReturnType<typeof usePanelData>;
   );
 }
 
-function Heatmap({ ops, queued }: { ops: Op[]; queued: number }) {
-  const cells = Array.from({ length: 26 * 7 }, (_, i) => {
-    const op = ops[i % Math.max(ops.length, 1)];
-    if (i < Math.min(ops.length + queued, 26 * 7)) return op?.status === "err" ? 3 : op?.status === "pending" ? 2 : 1;
-    return 0;
-  });
+function Heatmap({ ops }: { ops: Op[] }) {
+  const { start, end } = heatmapWindow();
+  const cells = Array.from({ length: HEATMAP_DAYS }, () => ({ count: 0, failed: false }));
+  let stamped = 0;
+  let inRange = 0;
+  for (const op of ops) {
+    const timestamp = opTimestamp(op);
+    if (timestamp === null) continue;
+    stamped += 1;
+    if (timestamp < start || timestamp >= end) continue;
+    const index = Math.floor((timestamp - start) / DAY_MS);
+    const cell = cells[index];
+    if (!cell) continue;
+    cell.count += 1;
+    cell.failed ||= op.status === "err";
+    inRange += 1;
+  }
+  const max = Math.max(0, ...cells.map((cell) => cell.count));
+  const labels = heatmapLabels(start);
+  const colors = ["var(--hm0)", "color-mix(in oklch,var(--acc3) 32%,var(--bg2))", "color-mix(in oklch,var(--acc3) 65%,var(--bg2))", "var(--acc3)"];
+  const colorFor = (count: number) => colors[count === 0 || max === 0 ? 0 : Math.max(1, Math.ceil((count / max) * 3))] ?? colors[0];
   return (
     <div className="hm-wrap">
-      <div className="hm-months">{["1月", "2月", "3月", "4月", "5月", "6月"].map((m) => <span key={m}>{m}</span>)}</div>
+      <div className="hm-months">{labels.map((m, index) => <span key={`${m}-${index}`}>{m}</span>)}</div>
       <div className="hm-grid">{Array.from({ length: 26 }, (_, col) => <div className="hm-col" key={col}>{Array.from({ length: 7 }, (_, row) => {
-        const value = cells[col * 7 + row] ?? 0;
-        const colors = ["var(--hm0)", "color-mix(in oklch,var(--acc3) 32%,var(--bg2))", "color-mix(in oklch,var(--acc3) 65%,var(--bg2))", "var(--warn)"];
-        return <i className="hm-cell" key={row} style={{ background: colors[value] }} />;
+        const index = col * 7 + row;
+        const cell = cells[index] ?? { count: 0, failed: false };
+        const date = new Date(start + index * DAY_MS).toISOString().slice(0, 10);
+        return <i className="hm-cell" key={row} title={`${date}: ${cell.count} ops`} style={{ background: colorFor(cell.count), boxShadow: cell.failed ? "0 0 0 1px var(--warn)" : "none" }} />;
       })}</div>)}</div>
-      <div className="hm-foot"><span>近 26 周 · 共 <b>{ops.length + queued}</b> 次操作 / 队列记录</span><span className="hm-leg">少 <i /><i style={{ background: "color-mix(in oklch,var(--acc3) 32%,var(--bg2))" }} /><i style={{ background: "color-mix(in oklch,var(--acc3) 65%,var(--bg2))" }} /><i style={{ background: "var(--warn)" }} /> 多</span></div>
+      <div className="hm-foot"><span>{inRange > 0 ? <>近 26 周 · <b>{inRange}</b> 条真实 ops 时间戳</> : "近 26 周没有可统计 ops 时间戳"}</span><span className="hm-leg">有效 {stamped}/{ops.length} <i /><i style={{ background: colors[1] }} /><i style={{ background: colors[2] }} /><i style={{ background: colors[3] }} /> 多</span></div>
     </div>
   );
 }
