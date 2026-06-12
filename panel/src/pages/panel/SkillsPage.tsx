@@ -29,6 +29,8 @@ interface SkillsPageProps {
 }
 
 type SkillsViewMode = "skills" | "trash";
+type SkillAttentionFilter = "all" | "attention";
+type SkillTagFilter = "all" | "tagged" | "untagged";
 
 export function SkillsPage({
   skills,
@@ -43,14 +45,27 @@ export function SkillsPage({
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<SkillsViewMode>("skills");
   const [addOpen, setAddOpen] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [targetFilter, setTargetFilter] = useState("all");
+  const [attentionFilter, setAttentionFilter] = useState<SkillAttentionFilter>("all");
+  const [tagFilter, setTagFilter] = useState<SkillTagFilter>("all");
   const [captureBindingId, setCaptureBindingId] = useState("");
   const [trashRefreshKey, setTrashRefreshKey] = useState(0);
   const query = q.trim().toLowerCase();
+  const targetOptions = targets.map((target) => target.id);
   const filtered = skills.filter((s) => {
-    if (!query) return true;
-    return [s.name, s.tag, s.description ?? ""].some((value) =>
-      value.toLowerCase().includes(query),
-    );
+    const matchesQuery =
+      !query ||
+      [s.name, s.tag, s.description ?? "", s.sourceStatus, ...s.releaseTags, ...s.snapshotTags].some((value) =>
+        value.toLowerCase().includes(query),
+      );
+    const matchesSource = sourceFilter === "all" || s.sourceStatus === sourceFilter;
+    const matchesTarget = targetFilter === "all" || s.targets.includes(targetFilter) || s.observedTargetIds?.includes(targetFilter);
+    const needsAttention = s.sourceStatus !== "present" || s.bindingCount === 0 || s.projectionCount === 0;
+    const matchesAttention = attentionFilter === "all" || needsAttention;
+    const hasTags = s.releaseTags.length > 0 || s.snapshotTags.length > 0;
+    const matchesTags = tagFilter === "all" || (tagFilter === "tagged" ? hasTags : !hasTags);
+    return matchesQuery && matchesSource && matchesTarget && matchesAttention && matchesTags;
   });
   const sel = filtered.find((s) => s.id === selectedSkill) ?? filtered[0] ?? skills.find((s) => s.id === selectedSkill) ?? skills[0];
   const capture = useMutation();
@@ -85,6 +100,19 @@ export function SkillsPage({
       onMutation,
     );
   };
+  const filtersActive =
+    Boolean(query) ||
+    sourceFilter !== "all" ||
+    targetFilter !== "all" ||
+    attentionFilter !== "all" ||
+    tagFilter !== "all";
+  const clearFilters = () => {
+    setQ("");
+    setSourceFilter("all");
+    setTargetFilter("all");
+    setAttentionFilter("all");
+    setTagFilter("all");
+  };
 
   const onSkillTrashed = () => {
     onSelectSkill(null);
@@ -112,6 +140,53 @@ export function SkillsPage({
             />
             <kbd>⌘K</kbd>
           </div>
+          {mode === "skills" && (
+            <>
+              <select
+                aria-label="Source status filter"
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value)}
+                style={filterSelectStyle}
+              >
+                <option value="all">all sources</option>
+                <option value="present">present</option>
+                <option value="missing">missing</option>
+                <option value="non-compliant">non-compliant</option>
+              </select>
+              <select
+                aria-label="Target filter"
+                value={targetFilter}
+                onChange={(event) => setTargetFilter(event.target.value)}
+                style={filterSelectStyle}
+              >
+                <option value="all">all targets</option>
+                {targetOptions.map((targetId) => (
+                  <option key={targetId} value={targetId}>
+                    {targetId}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Attention filter"
+                value={attentionFilter}
+                onChange={(event) => setAttentionFilter(event.target.value as SkillAttentionFilter)}
+                style={filterSelectStyle}
+              >
+                <option value="all">all states</option>
+                <option value="attention">needs attention</option>
+              </select>
+              <select
+                aria-label="Tag filter"
+                value={tagFilter}
+                onChange={(event) => setTagFilter(event.target.value as SkillTagFilter)}
+                style={filterSelectStyle}
+              >
+                <option value="all">all tags</option>
+                <option value="tagged">tagged</option>
+                <option value="untagged">untagged</option>
+              </select>
+            </>
+          )}
           {mode === "skills" && selectedSkillBindings.length > 1 && (
             <select
               aria-label="Capture binding"
@@ -167,9 +242,10 @@ export function SkillsPage({
           filtered.length === 0 ? (
             <SkillListEmptyState
               query={query}
+              filtersActive={filtersActive}
               readOnly={readOnly}
               onAddSkill={() => setAddOpen(true)}
-              onClearFilter={() => setQ("")}
+              onClearFilter={clearFilters}
             />
           ) : (
             <div className="two-col" style={{ height: "100%", gap: 0 }}>
@@ -226,6 +302,7 @@ export function SkillsPage({
                     skill={sel}
                     targets={targets}
                     bindings={bindings}
+                    projections={projections}
                     onMutation={onMutation}
                     onTrashed={onSkillTrashed}
                     readOnly={readOnly}
@@ -251,23 +328,29 @@ export function SkillsPage({
 
 function SkillListEmptyState({
   query,
+  filtersActive,
   readOnly,
   onAddSkill,
   onClearFilter,
 }: {
   query: string;
+  filtersActive: boolean;
   readOnly: boolean;
   onAddSkill: () => void;
   onClearFilter: () => void;
 }) {
-  if (query) {
+  if (filtersActive) {
     return (
       <EmptyState
         title="No matching skills"
         icon={<SearchIcon />}
         actions={[{ label: "Clear filter", onClick: onClearFilter, variant: "ghost" }]}
       >
-        Nothing in the registry matches <span className="mono">{query}</span>.
+        {query ? (
+          <>Nothing in the registry matches <span className="mono">{query}</span>.</>
+        ) : (
+          "No skills match the selected filters."
+        )}
       </EmptyState>
     );
   }
@@ -386,13 +469,15 @@ const captureSelectStyle = {
   fontSize: 11,
   outline: "none",
 };
+const filterSelectStyle = { ...captureSelectStyle, minWidth: 120, maxWidth: 180 };
 
-type DetailTab = "history" | "diff" | "targets" | "diagnose";
+type DetailTab = "overview" | "lifecycle" | "diagnose" | "history" | "diff" | "projections" | "trash";
 
 function SkillDetail({
   skill,
   targets,
   bindings,
+  projections,
   onMutation,
   onTrashed,
   readOnly,
@@ -400,11 +485,12 @@ function SkillDetail({
   skill: Skill;
   targets: Target[];
   bindings: Binding[];
+  projections: RegistryProjection[];
   onMutation: () => void;
   onTrashed: () => void;
   readOnly: boolean;
 }) {
-  const [tab, setTab] = useState<DetailTab>("history");
+  const [tab, setTab] = useState<DetailTab>("lifecycle");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyEvents, setHistoryEvents] = useState<LifecycleEvent[]>([]);
@@ -419,10 +505,22 @@ function SkillDetail({
     .filter((t): t is Target => t !== undefined);
 
   const skillBindings = bindings.filter((b) => b.skill === skill.name);
+  const skillProjections = projections.filter((projection) => projection.skill_id === skill.name);
   const policyLabel = summarizePolicy(skillBindings);
+  const projectionHealthLabel =
+    skillProjections.length === 0
+      ? "no projections"
+      : Object.entries(
+          skillProjections.reduce<Record<string, number>>((acc, projection) => {
+            acc[projection.health] = (acc[projection.health] ?? 0) + 1;
+            return acc;
+          }, {}),
+        )
+          .map(([health, count]) => `${health} ${count}`)
+          .join(" · ");
 
   useEffect(() => {
-    if (tab !== "history") return;
+    if (tab !== "lifecycle" && tab !== "history") return;
     const ctrl = new AbortController();
     setHistoryLoading(true);
     setHistoryError(null);
@@ -491,24 +589,42 @@ function SkillDetail({
       </div>
 
       <LifecycleActions skillName={skill.name} onMutation={onLifecycleMutation} readOnly={readOnly} />
-      <TrashSkillAction skill={skill} onSuccess={onTrashed} readOnly={readOnly} />
 
       <div className="tabs">
-        <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>
+        <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>
+          Overview
+        </button>
+        <button className={tab === "lifecycle" ? "active" : ""} onClick={() => setTab("lifecycle")}>
           Lifecycle
-        </button>
-        <button className={tab === "diff" ? "active" : ""} onClick={() => setTab("diff")}>
-          Diff
-        </button>
-        <button className={tab === "targets" ? "active" : ""} onClick={() => setTab("targets")}>
-          Targets ({targetObjs.length})
         </button>
         <button className={tab === "diagnose" ? "active" : ""} onClick={() => setTab("diagnose")}>
           Diagnose
         </button>
+        <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>
+          History
+        </button>
+        <button className={tab === "diff" ? "active" : ""} onClick={() => setTab("diff")}>
+          Diff
+        </button>
+        <button className={tab === "projections" ? "active" : ""} onClick={() => setTab("projections")}>
+          Projections ({skillProjections.length})
+        </button>
+        <button className={tab === "trash" ? "active" : ""} onClick={() => setTab("trash")}>
+          Trash state
+        </button>
       </div>
 
-      {tab === "history" && (
+      {tab === "overview" && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <div className="kv" style={{ margin: 0 }}>
+            <div className="k">Projected targets</div>
+            <div className="v">{targetObjs.length}</div>
+            <div className="k">Projection health</div>
+            <div className="v">{projectionHealthLabel}</div>
+          </div>
+        </div>
+      )}
+      {(tab === "lifecycle" || tab === "history") && (
         <>
           {historyLoading && (
             <div style={{ color: "var(--ink-3)", fontSize: 12 }}>Loading…</div>
@@ -524,21 +640,22 @@ function SkillDetail({
         </>
       )}
       {tab === "diff" && <SkillDiff skillName={skill.name} />}
-      {tab === "targets" && (
+      {tab === "projections" && (
         <>
           <ProjectSkillForm
             skillName={skill.name}
-            bindings={bindings}
+            bindings={skillBindings}
             targets={targets}
             onMutation={onMutation}
             readOnly={readOnly}
           />
-          <TargetsTab targets={targetObjs} />
+          <ProjectionsTab projections={skillProjections} targets={targets} />
         </>
       )}
       {tab === "diagnose" && (
         <SkillDiagnosePanel loading={diagnoseLoading} error={diagnoseError} diagnose={diagnose} />
       )}
+      {tab === "trash" && <TrashSkillAction skill={skill} onSuccess={onTrashed} readOnly={readOnly} />}
     </div>
   );
 }
@@ -559,16 +676,22 @@ function ProjectSkillForm({
   const [bindingId, setBindingId] = useState(bindings[0]?.id ?? "");
   const [method, setMethod] = useState<"symlink" | "copy" | "materialize">("symlink");
   const project = useMutation();
+  const bindingOptionKey = bindings.map((binding) => binding.id).join("\u001f");
+  const selectedBinding = bindings.find((binding) => binding.id === bindingId) ?? null;
+
+  useEffect(() => {
+    setBindingId((current) => (bindings.some((binding) => binding.id === current) ? current : bindings[0]?.id ?? ""));
+  }, [bindingOptionKey]);
 
   const runProject = () => {
-    if (!bindingId) return;
-    project.run("skill project", () => api.project({ skill: skillName, binding: bindingId, method }), onMutation);
+    if (!selectedBinding) return;
+    project.run("skill project", () => api.project({ skill: skillName, binding: selectedBinding.id, method }), onMutation);
   };
 
   return (
     <div className="card" style={{ padding: 12, marginBottom: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 130px auto", gap: 8 }}>
-        <select value={bindingId} onChange={(event) => setBindingId(event.target.value)} style={formInputStyle} disabled={readOnly}>
+        <select value={selectedBinding?.id ?? ""} onChange={(event) => setBindingId(event.target.value)} style={formInputStyle} disabled={readOnly}>
           {bindings.length === 0 && <option value="">(no bindings)</option>}
           {bindings.map((binding) => {
             const target = targets.find((item) => item.id === binding.target);
@@ -589,7 +712,7 @@ function ProjectSkillForm({
           <option value="copy">copy</option>
           <option value="materialize">materialize</option>
         </select>
-        <button className="btn primary" onClick={runProject} disabled={readOnly || project.busy || !bindingId}>
+        <button className="btn primary" onClick={runProject} disabled={readOnly || project.busy || !selectedBinding}>
           {project.busy ? "projecting…" : "Project"}
         </button>
       </div>
@@ -598,39 +721,36 @@ function ProjectSkillForm({
   );
 }
 
-function TargetsTab({ targets }: { targets: Target[] }) {
-  if (targets.length === 0) {
+function ProjectionsTab({ projections, targets }: { projections: RegistryProjection[]; targets: Target[] }) {
+  if (projections.length === 0) {
     return <div className="empty" style={{ padding: "18px 4px" }}>This skill is not projected to any target.</div>;
   }
 
   return (
     <div>
-      {targets.map((t) => (
-        <div
-          key={t.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "10px 12px",
-            borderBottom: "1px solid var(--line-soft)",
-          }}
-        >
-          <AgentAvatar agent={t.agent} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12.5, color: "var(--ink-0)" }}>
-              {t.agent}/{t.profile}
+      {projections.map((projection) => {
+        const target = targets.find((item) => item.id === projection.target_id);
+        return (
+          <div
+            key={projection.instance_id}
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--line-soft)" }}
+          >
+            <AgentAvatar agent={target?.agent ?? projection.target_id} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, color: "var(--ink-0)" }}>
+                {target ? `${target.agent}/${target.profile}` : projection.target_id}
+              </div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", overflowWrap: "anywhere" }}>
+                {projection.materialized_path}
+              </div>
+              <div className="mono dim" style={{ fontSize: 10.5 }}>
+                {projection.method} · {projection.last_applied_rev}
+              </div>
             </div>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
-              {t.path}
-            </div>
+            <span className={`chip ${projection.health === "healthy" ? "present" : "missing"}`}>{projection.health}</span>
           </div>
-          <span className={`chip ${t.ownership}`}>
-            <span className="dot" />
-            {t.ownership}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
