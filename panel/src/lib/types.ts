@@ -84,6 +84,8 @@ export interface Binding {
   matcher: string;
   method: ProjectionMethod;
   policy: "auto" | "manual";
+  ruleCount?: number;
+  skillCount?: number;
 }
 
 export type PanelPageKey =

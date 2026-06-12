@@ -82,4 +82,67 @@ describe("api adapters enum handling", () => {
     ).toBe("unknown");
     expect(adaptRegistryOperation(operation({ method: "teleport" })).method).toBe("unknown");
   });
+
+  it("labels multi-rule bindings without fabricating a single projectable skill", () => {
+    const binding = adaptBinding(
+      {
+        binding_id: "binding-1",
+        agent: "claude",
+        profile_id: "default",
+        workspace_matcher: { kind: "path_prefix", value: "/repo" },
+        default_target_id: "target-1",
+        policy_profile: "auto",
+        active: true,
+      },
+      [
+        {
+          binding_id: "binding-1",
+          skill_id: "skill-a",
+          target_id: "target-1",
+          method: "copy",
+          watch_policy: "auto",
+        },
+        {
+          binding_id: "binding-1",
+          skill_id: "skill-b",
+          target_id: "target-1",
+          method: "symlink",
+          watch_policy: "auto",
+        },
+      ],
+    );
+
+    expect(binding.skill).toBe("multi");
+    expect(binding.method).toBe("unknown");
+    expect(binding.ruleCount).toBe(2);
+    expect(binding.skillCount).toBe(2);
+  });
+
+  it("keeps a single-rule skill literally named multi projectable", () => {
+    const binding = adaptBinding(
+      {
+        binding_id: "binding-1",
+        agent: "claude",
+        profile_id: "default",
+        workspace_matcher: { kind: "path_prefix", value: "/repo" },
+        default_target_id: "target-1",
+        policy_profile: "auto",
+        active: true,
+      },
+      [
+        {
+          binding_id: "binding-1",
+          skill_id: "multi",
+          target_id: "target-1",
+          method: "copy",
+          watch_policy: "auto",
+        },
+      ],
+    );
+
+    expect(binding.skill).toBe("multi");
+    expect(binding.method).toBe("copy");
+    expect(binding.ruleCount).toBe(1);
+    expect(binding.skillCount).toBe(1);
+  });
 });

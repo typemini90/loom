@@ -6,6 +6,7 @@ import { BindingIcon, PlusIcon } from "../../components/icons/nav_icons";
 import { EmptyState } from "../../components/panel/EmptyState";
 import { BindingAddForm } from "../../components/panel/forms/BindingAddForm";
 import { api, type BindingShowPayload } from "../../lib/api/client";
+import { isMultiBinding } from "../../lib/binding_labels";
 import { useApiQuery } from "../../lib/useApiQuery";
 import { useMutation } from "../../lib/useMutation";
 import type { RegistryProjection } from "../../generated/RegistryProjection";
@@ -200,7 +201,7 @@ export function BindingsPage({
                           {b.id}
                         </td>
                         <td className="name" data-label="Skill">
-                          {b.skill}
+                          {isMultiBinding(b) ? <span className="badge warn">multi</span> : b.skill}
                         </td>
                         <td data-label="Target">
                           {t && (
@@ -285,7 +286,7 @@ function BindingDetail({
   const t = targets.find((x) => x.id === binding.target);
   const rules = state.kind === "ready" ? state.payload.rules ?? [] : [];
   const projections = state.kind === "ready" ? state.payload.projections ?? [] : [];
-  const canProject = !readOnly && binding.skill !== "—" && Boolean(t) && binding.method !== "unknown";
+  const canProject = !readOnly && binding.skill !== "—" && !isMultiBinding(binding) && Boolean(t) && binding.method !== "unknown";
   const actionBusy = project.busy || remove.busy;
 
   const runProject = () => {
@@ -333,6 +334,8 @@ function BindingDetail({
               ? "registry offline"
               : binding.skill === "—"
               ? "binding has no skill rule"
+              : isMultiBinding(binding)
+              ? "binding has multiple rules; project from a specific skill"
               : !t
               ? "binding target is missing"
               : "project this binding to its target"

@@ -173,14 +173,19 @@ function inferTag(name: string): string {
 }
 
 export function adaptBinding(b: RegistryBinding, rules: RegistryRule[]): Binding {
-  const rule = rules.find((r) => r.binding_id === b.binding_id);
+  const bindingRules = rules.filter((r) => r.binding_id === b.binding_id);
+  const skillCount = new Set(bindingRules.map((rule) => rule.skill_id)).size;
+  const multi = bindingRules.length > 1 || skillCount > 1;
+  const rule = multi ? undefined : bindingRules[0];
   return {
     id: b.binding_id,
-    skill: rule?.skill_id ?? "—",
+    skill: bindingRules.length === 0 ? "—" : multi ? "multi" : bindingRules[0].skill_id,
     target: b.default_target_id,
     matcher: `${b.workspace_matcher.kind}:${b.workspace_matcher.value}`,
     method: rule ? toMethod(rule.method) : "unknown",
     policy: b.policy_profile === "manual" ? "manual" : "auto",
+    ruleCount: bindingRules.length,
+    skillCount,
   };
 }
 
