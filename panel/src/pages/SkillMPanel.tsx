@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { usePanelData } from "../lib/api/usePanelData";
 import { api } from "../lib/api/client";
 import type { Op, PanelPageKey, Skill, Target } from "../lib/types";
+import { FirstRunPage } from "./panel/FirstRunPage";
 import { DoctorPage } from "./panel/DoctorPage";
 
 type SkillMPage = PanelPageKey | "market" | "forge";
@@ -265,15 +266,21 @@ export function SkillMPanel() {
       <div className="sm-frame">
         <ActivityRail view={view} counts={{ ...counts, skills: live.skills.length, targets: live.targets.length, bindings: live.bindings.length, projections: live.projections.length }} onGo={go} onTerm={() => setTermOpen((open) => !open)} />
         <main className="sm-main" data-screen-label={view}>
-          {view === "overview" && <Overview live={live} counts={counts} go={go} />}
-          {view === "skills" && <Skills skills={live.skills} targets={live.targets} query={query} setQuery={setQuery} selected={selected} setSelectedSkill={setSelectedSkill} />}
-          {(view === "targets" || view === "bindings" || view === "projections") && <Plane live={live} tab={view} go={go} />}
-          {(view === "ops" || view === "history") && <Ops live={live} history={view === "history"} runAction={runAction} />}
-          {view === "sync" && <Sync live={live} runAction={runAction} />}
-          {view === "doctor" && <Doctor live={live} go={go} />}
-          {view === "settings" && <Settings live={live} dark={dark} setDark={setDark} density={density} setDensity={setDensity} accent={accent} setAccent={setAccent} />}
-          {view === "market" && <Market live={live} />}
-          {view === "forge" && <Forge live={live} />}
+          {live.mode === "first-run" ? (
+            <div className="view view-first-run"><FirstRunPage registryRoot={live.registryRoot} onReady={live.refetch} /></div>
+          ) : (
+            <>
+              {view === "overview" && <Overview live={live} counts={counts} go={go} />}
+              {view === "skills" && <Skills skills={live.skills} targets={live.targets} query={query} setQuery={setQuery} selected={selected} setSelectedSkill={setSelectedSkill} />}
+              {(view === "targets" || view === "bindings" || view === "projections") && <Plane live={live} tab={view} go={go} />}
+              {(view === "ops" || view === "history") && <Ops live={live} history={view === "history"} runAction={runAction} />}
+              {view === "sync" && <Sync live={live} runAction={runAction} />}
+              {view === "doctor" && <Doctor live={live} go={go} />}
+              {view === "settings" && <Settings live={live} dark={dark} setDark={setDark} density={density} setDensity={setDensity} accent={accent} setAccent={setAccent} />}
+              {view === "market" && <Market live={live} />}
+              {view === "forge" && <Forge live={live} />}
+            </>
+          )}
           {termOpen && <Terminal live={live} close={() => setTermOpen(false)} />}
         </main>
       </div>
