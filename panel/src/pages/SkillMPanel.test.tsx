@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { api } from "../lib/api/client";
 import { SkillMPanel } from "./SkillMPanel";
 
 const panelData = vi.hoisted(() => ({
@@ -107,6 +108,7 @@ vi.mock("../lib/api/usePanelData", () => ({
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   panelData.refetch.mockReset();
   panelData.current = null;
   window.history.replaceState(null, "", "/");
@@ -125,6 +127,33 @@ describe("SkillMPanel", () => {
   it("switches between queued ops and audit history tabs", async () => {
     panelData.current = panelData.liveOps;
     window.history.replaceState(null, "", "/?view=ops");
+    const ops = vi.spyOn(api, "ops").mockResolvedValue({
+      ok: true,
+      data: {
+        count: 40,
+        loaded_count: 1,
+        offset: 0,
+        limit: 100,
+        has_more: false,
+        operations: [
+          {
+            op_id: "hist-1",
+            audit_id: "audit-1",
+            request_id: "req-1",
+            source: "panel",
+            intent: "skill.release",
+            status: "succeeded",
+            ack: false,
+            skill: "release-notes",
+            target: "codex",
+            binding: null,
+            method: "copy",
+            created_at: "2026-06-12T09:00:00Z",
+            updated_at: "2026-06-12T09:01:00Z",
+          },
+        ],
+      },
+    });
 
     render(<SkillMPanel />);
 
@@ -133,7 +162,9 @@ describe("SkillMPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /审计历史/ }));
 
-    expect(screen.getByText("skill.save")).toBeTruthy();
+    expect(await screen.findByText("skill.release")).toBeTruthy();
+    expect(screen.getByText("release-notes")).toBeTruthy();
+    expect(ops.mock.calls[0]?.[0]).toEqual({ limit: 100, offset: 0 });
     expect(new URL(window.location.href).searchParams.get("view")).toBe("history");
   });
 });
